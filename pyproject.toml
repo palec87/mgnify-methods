@@ -7,10 +7,27 @@ authors = [
     { name = "palec87", email = "palec87@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "biopython>=1.81.0",
+    "jsonapi-client>=0.9.9",
+    "marine-omics>=0.1.17",
+    "matplotlib>=3.8.0",
+    "matplotlib_venn>=1.1.2",
+    "py-udal-mgo @ git+https://github.com/fair-ease/py-udal-mgo.git",
+    "numpy>=1.25.0",
+    "pandas>=2.0.0",
+    "scikit-learn>=1.4.0",
+    "scipy>=1.11.0",
+    "seaborn>=0.13.0",
+    "setuptools>=68.0.0,<81.0.0",
+    "requests>=2.31.0",
+    "tqdm>=4.66.0",
+]
 
 [project.optional-dependencies]
 dev = [
+    "ipykernel>=6.0.0",
+    "jupyterlab>=4.0.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.1.0",
@@ -45,6 +62,9 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.ruff]
 line-length = 88
