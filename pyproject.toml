@@ -16,6 +16,7 @@ dependencies = [
     "py-udal-mgo @ git+https://github.com/fair-ease/py-udal-mgo.git",
     "numpy>=1.25.0",
     "pandas>=2.0.0",
+    "pydantic>=2.12.0",
     "scikit-learn>=1.4.0",
     "scipy>=1.11.0",
     "seaborn>=0.13.0",
