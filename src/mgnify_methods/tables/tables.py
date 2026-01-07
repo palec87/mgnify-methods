@@ -8,12 +8,10 @@ from pathlib import Path
 from pydantic import BaseModel
 from mgnify_methods.taxonomy import replace_trailing_empty_with_none
 from .sources.handlers import SOURCE_HANDLERS
-# from wfs_extra.scripts.mgnify.tables.sources.validators import validate_abundance_ncbi
-# from .sources.converters import mgnify_raw_to_processed
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 
 DEFAULT_RANKS = ["superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species"]
@@ -204,13 +202,3 @@ class AbundanceTable(BaseTable):
             melted = pd.concat([melted.drop(columns=["taxonomic_concat"]), tax_split], axis=1)
         melted = melted.sort_index()
         return flag_has_ncbi, TaxonomyTable(melted, source='tax_processed')
-
-
-# def replace_trailing_empty_with_none(df):
-#     empty = (df == "")
-#     trailing = empty.copy()
-    
-#     for i in range(len(df.columns) - 2, -1, -1):
-#         trailing.iloc[:, i] = trailing.iloc[:, i] & trailing.iloc[:, i + 1]
-    
-#     return df.mask(trailing & empty, None)

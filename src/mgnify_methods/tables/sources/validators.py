@@ -36,5 +36,3 @@ def validate_abundance_processed(df: pd.DataFrame) -> None:
     # value dtypes are all numeric
     if df.select_dtypes(include='number').shape[1] != df.shape[1]:
         raise ValueError("All values must be numeric")
-    
-    return True
