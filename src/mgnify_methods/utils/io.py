@@ -7,12 +7,21 @@ from typing import Any, Dict
 from jsonapi_client import Session as APISession
 from .api import get_mgnify_metadata
 
+from momics.metadata import (
+    # process_collection_date,
+    extract_season,
+)
+
+# setup logging
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 def fetch_analysis_metadata(folder, analysisId):
     try:
         analysis_meta = pd.read_csv(f'{folder}/{analysisId}_analysis_meta.csv').reset_index(drop=True)
     except FileNotFoundError:
-        print(f"Metadata file not found: Downloading...")
+        logger.info(f"Metadata file not found: Downloading...")
 
         with APISession("https://www.ebi.ac.uk/metagenomics/api/v1") as session:
             analysis_meta = map(lambda r: r.json, session.iterate(f'studies/{analysisId}/analyses'))
@@ -26,7 +35,7 @@ def fetch_samples_metadata(folder, analysisId):
     try:
         samples_meta = pd.read_csv(f'{folder}/{analysisId}_samples_meta.csv').reset_index(drop=True)
     except FileNotFoundError:
-        print(f"Samples metadata file not found: Downloading...")
+        logger.info(f"Samples metadata file not found: Downloading...")
         samples_meta = get_mgnify_metadata(analysisId)
         samples_meta.to_csv(f'{folder}/{analysisId}_samples_meta.csv', index=False)
     return samples_meta
@@ -35,9 +44,71 @@ def fetch_samples_metadata(folder, analysisId):
 def import_taxonomy_summary(folder, path):
     df_tax_summary = pd.read_csv(os.path.join(folder, path), sep='\t')
 
-    df_tax_summary.rename(columns={'#SampleID': 'taxonomy'}, inplace=True)
-    df_tax_summary.set_index('taxonomy', inplace=True)
+    # df_tax_summary.rename(columns={'#SampleID': 'taxonomy'}, inplace=True)
+    df_tax_summary.set_index('#SampleID', inplace=True)
     return df_tax_summary
+
+
+def process_analysis_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
+    analysis_meta_dfs = {}
+    for k, values in ds_dict.items():
+        analysisId = values[0]
+        analysis_meta = fetch_analysis_metadata(cache_folder, analysisId)
+
+        analysis_meta_dfs[k] = analysis_meta
+
+    # add study tag to each analysis metadata dataframe
+    for k, df in analysis_meta_dfs.items():
+        logger.info(f"Analysis {k} has {df.shape[0]} samples.")
+        df['study_tag'] = k
+
+    # concatenate all metadata dataframes
+    analysis_meta = pd.concat(analysis_meta_dfs.values(), ignore_index=True)
+    analysis_meta.set_index('relationships.run.data.id', inplace=True)
+    return analysis_meta
+
+
+def process_samples_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
+    samples_meta_dfs = {}
+    for k, values in ds_dict.items():
+        analysisId = values[0]
+        samples_meta = fetch_samples_metadata(cache_folder, analysisId)
+        samples_meta_dfs[k] = samples_meta
+
+    # add study tag to each analysis metadata dataframe
+    for k, df in samples_meta_dfs.items():
+        logger.info(f"Analysis {k} has {df.shape[0]} samples.")
+        df['study_tag'] = k
+
+    # concatenate all metadata dataframes
+    samples_meta = pd.concat(samples_meta_dfs.values(), ignore_index=True)
+    return samples_meta
+
+
+def enhance_samples_metadata(samples_meta: pd.DataFrame) -> pd.DataFrame:
+    # enhance metadata
+    samples_meta.rename(columns={'collection date': 'collection_date'}, inplace=True)
+    samples_meta, _ = process_collection_date(samples_meta)
+    samples_meta, _ = extract_season(samples_meta)
+
+    samples_meta['sample_type'] = samples_meta['sample-name'].apply(lambda x: 'euk' if 'Euk' in x else 'prok')
+
+    bef = samples_meta.shape[0]
+    samples_meta = samples_meta[samples_meta['sample_type'].isin(['prok'])].reset_index(drop=True)
+    after = samples_meta.shape[0]
+    logger.info(f"Filtered samples to prokaryotes only: {bef} -> {after}")
+    return samples_meta
+
+
+def filter_number_reads(sample_total_dict,cutoff):
+    to_drop = []
+    for _, v in sample_total_dict.items():
+        for sample, (total, _) in v.items():
+            if total > cutoff:
+                continue
+            to_drop.append(sample)
+    logger.info(f"Dropping {len(to_drop)} samples with less than {cutoff} reads: {to_drop}")
+    return to_drop
 
 
 # ---------------------------
@@ -85,7 +156,7 @@ def process_collection_date(metadata: pd.DataFrame) -> pd.DataFrame:
     invalid_count = metadata["collection_date"].isna().sum() # Count invalids (NaT)
     metadata = metadata.dropna(subset=["collection_date"]) # Drop them
 
-    print(f"Dropped {invalid_count} rows with invalid or missing collection_date "
+    logger.info(f"Dropped {invalid_count} rows with invalid or missing collection_date "
         f"({before - len(metadata)} actually removed).")
     # print(metadata['collection_date'].value_counts(dropna=False))
     

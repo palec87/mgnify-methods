@@ -27,57 +27,109 @@ def plot_rarefaction_mgnify(abund_table, metadata, every_nth=20, ax=None, title=
     return ax
 
 
-def plot_season_reads_hist(
+def plot_feature_reads_hist(
     analysis_meta,
     samples_meta,
+    feature='season',
     name=None,
     use_robust_save=True,
+    bins=10,
+    figsize=(10, 6),
     **kwargs,
 ) -> Dict[str, Dict[str, Tuple[int, float]]]:
-    total_dict = {'Spring': {}, 'Summer': {}, 'Autumn': {}, 'Winter': {}}
-
-    # extracting the reads metadata per sample
+    """
+    Plot histogram of total reads per sample grouped by a specified feature.
+    
+    Parameters
+    ----------
+    analysis_meta : pd.DataFrame
+        Analysis metadata with 'relationships.sample.data.id' column and sample IDs as index
+    samples_meta : pd.DataFrame
+        Sample metadata with 'id' column and the feature column to group by
+    feature : str
+        Column name in samples_meta to group samples by (default: 'season')
+    name : str, optional
+        Filename for saving the plot (without extension)
+    use_robust_save : bool
+        Whether to use robust saving with metadata (default: True)
+    bins : int
+        Number of bins for histogram (default: 10)
+    figsize : tuple
+        Figure size (default: (10, 6))
+    **kwargs
+        Additional arguments passed to save_plot_with_metadata
+    
+    Returns
+    -------
+    dict
+        Dictionary mapping feature values to dictionaries of {sample: (total_reads, ratio)}
+    
+    Examples
+    --------
+    >>> # Plot by season
+    >>> result = plot_feature_reads_hist(analysis_meta, samples_meta, feature='season')
+    
+    >>> # Plot by study tag
+    >>> result = plot_feature_reads_hist(analysis_meta, samples_meta, feature='study_tag')
+    
+    >>> # Plot by sample type (prokaryotes vs eukaryotes)
+    >>> result = plot_feature_reads_hist(analysis_meta, samples_meta, feature='sample_type')
+    """
+    # Check if feature column exists
+    if feature not in samples_meta.columns:
+        raise ValueError(f"Feature '{feature}' not found in samples_meta columns: {list(samples_meta.columns)}")
+    
+    # Get unique feature values dynamically
+    feature_values = samples_meta[feature].dropna().unique()
+    total_dict = {str(val): {} for val in feature_values}
+    
+    # Extract reads metadata per sample
     not_matched = 0
     for sample in analysis_meta.index:
         try:
-            data_id = analysis_meta[analysis_meta.index==sample]['relationships.sample.data.id'].values[0]
-            season = samples_meta[samples_meta['id']==data_id]['season'].values[0]
-            total_dict[season][sample] = extract_sample_stats(analysis_meta, sample)
-        except IndexError:
+            data_id = analysis_meta.at[sample, 'relationships.sample.data.id']
+            feature_value = samples_meta[samples_meta['id'] == data_id][feature].values[0]
+            total_dict[str(feature_value)][sample] = extract_sample_stats(analysis_meta, sample)
+        except (IndexError, KeyError):
             not_matched += 1
             continue
-    print(f"Samples not matched to season metadata: {not_matched}")
     
-    # plot histogram per season 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    season_stats = {}
-    for season, stats in total_dict.items():
-        totals = [stats[0] for _, stats in total_dict[season].items()]  # stat contains (total, ratio)
-        ax.hist(totals, bins=10, alpha=0.3, label=season)
-        season_stats[season] = {
+    print(f"Samples not matched to {feature} metadata: {not_matched}")
+    
+    # Plot histogram per feature value
+    fig, ax = plt.subplots(figsize=figsize)
+    feature_stats = {}
+    
+    for feature_val, stats in total_dict.items():
+        if not stats:  # Skip empty groups
+            continue
+        totals = [stat[0] for _, stat in stats.items()]  # stat contains (total, ratio)
+        ax.hist(totals, bins=bins, alpha=0.3, label=feature_val)
+        feature_stats[feature_val] = {
             'n_samples': len(totals),
-            'mean_reads': np.mean(totals),
-            'std_reads': np.std(totals),
-            'min_reads': np.min(totals),
-            'max_reads': np.max(totals)
+            'mean_reads': float(np.mean(totals)) if totals else 0,
+            'std_reads': float(np.std(totals)) if totals else 0,
+            'min_reads': int(np.min(totals)) if totals else 0,
+            'max_reads': int(np.max(totals)) if totals else 0
         }
     
     ax.legend()
     ax.set_xlabel("Total reads per sample")
     ax.set_ylabel("Number of samples")
-    ax.set_title("Distribution of Total Reads per Sample by Season")
+    ax.set_title(f"Distribution of Total Reads per Sample by {feature.replace('_', ' ').title()}")
     
     if use_robust_save:
         # Use new robust saving method
         save_plot_with_metadata(
             fig=fig,
-            filename=name.replace('.png', '') if name else "season_reads_histogram",
-            description=f"Histogram showing distribution of total sequencing reads per sample, grouped by collection season. Data from MGnify study {globals().get('analysisId', 'unknown')}. Each season shows different sequencing depth patterns.",
-            plot_type="histogram_seasonal",
+            filename=name.replace('.png', '') if name else f"{feature}_reads_histogram",
+            description=f"Histogram showing distribution of total sequencing reads per sample, grouped by {feature}. Data from MGnify study {globals().get('analysisId', 'unknown')}. Each {feature} value shows different sequencing depth patterns.",
+            plot_type=f"histogram_{feature}",
             data_info={
                 "total_samples": len(analysis_meta),
-                "seasons_analyzed": list(total_dict.keys()),
-                "season_statistics": season_stats,
+                "feature": feature,
+                "feature_values": list(total_dict.keys()),
+                "feature_statistics": feature_stats,
                 "study_id": globals().get('analysisId', 'unknown')
             },
             **kwargs,
@@ -85,6 +137,46 @@ def plot_season_reads_hist(
     
     plt.show()
     return total_dict
+
+
+def plot_season_reads_hist(
+    analysis_meta,
+    samples_meta,
+    name=None,
+    use_robust_save=True,
+    **kwargs,
+) -> Dict[str, Dict[str, Tuple[int, float]]]:
+    """
+    Plot histogram of total reads per sample grouped by season.
+    
+    This is a convenience wrapper around plot_feature_reads_hist with feature='season'.
+    
+    Parameters
+    ----------
+    analysis_meta : pd.DataFrame
+        Analysis metadata
+    samples_meta : pd.DataFrame
+        Sample metadata with 'season' column
+    name : str, optional
+        Filename for saving the plot
+    use_robust_save : bool
+        Whether to use robust saving with metadata
+    **kwargs
+        Additional arguments passed to plot_feature_reads_hist
+    
+    Returns
+    -------
+    dict
+        Dictionary mapping seasons to dictionaries of {sample: (total_reads, ratio)}
+    """
+    return plot_feature_reads_hist(
+        analysis_meta=analysis_meta,
+        samples_meta=samples_meta,
+        feature='season',
+        name=name,
+        use_robust_save=use_robust_save,
+        **kwargs
+    )
 
 # -----------------------
 # Plotting and saving
