@@ -14,84 +14,8 @@ def replace_trailing_empty_with_none(df):
     
     return df.mask(trailing & empty, None)
 
-
-def pivot_taxonomic_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Prepares the taxonomic data (LSU and SSU tables) for analysis. Apart from
-    pivoting.
-
-    Normalization of the pivot is optional. Methods include:
-
-    - **None**: no normalization.
-    - **tss_sqrt**: Total Sum Scaling and Square Root Transformation.
-    - **rarefy**: rarefaction to a specified depth, if None, min of sample sums is used.
-
-    TODO: refactor scaling to a new method and offer different options.
-
-    Args:
-        df (pd.DataFrame): The input DataFrame containing taxonomic information.
-        normalize (str, optional): Normalization method.
-            Options: None, 'tss_sqrt', 'rarefy'. Defaults to None.
-        rarefy_depth (int, optional): Depth for rarefaction. If None, uses min sample sum.
-            Defaults to None.
-
-    Returns:
-        pd.DataFrame: A pivot table with taxonomic data.
-    """
-    if isinstance(df.index, pd.MultiIndex):
-        index = df.index.names[0]
-        df1 = df.reset_index()
-        df1.set_index(index, inplace=True)
-    else:
-        df1 = df.copy()
-
-    tax_ranks = [
-        'ncbi_tax_id', 'superkingdom', 'kingdom', 'phylum', 'class',
-        'order', 'family', 'genus', 'species',
-    ]
-    prefix_map = {
-        "ncbi_tax_id": "",
-        "superkingdom": "sk__",
-        "kingdom": "k__",
-        "phylum": "p__",
-        "class": "c__",
-        "order": "o__",
-        "family": "f__",
-        "genus": "g__",
-        "species": "s__",
-    }
-    tax_ranks_filt = [tax for tax in tax_ranks if tax in df1.columns]
-    df1["taxonomic_concat"] = df1.apply(
-        lambda row: ";" + ";".join(
-            f"{prefix_map[tax]}{row[tax]}" if pd.notna(row[tax]) else f"{prefix_map[tax]}"
-            for tax in tax_ranks_filt
-        ),
-        axis=1
-    )
-    if 'ncbi_tax_id' in tax_ranks_filt:
-        pivot_table = (
-            df1.pivot_table(
-                index=["ncbi_tax_id", "taxonomic_concat"],
-                columns=df1.index,
-                values="abundance",
-            )
-            .fillna(0)
-            .astype(int)
-        )
-    else:
-        pivot_table = (
-            df1.pivot_table(
-                index=["taxonomic_concat"],
-                columns=df1.index,
-                values="abundance",
-            )
-            .fillna(0)
-            .astype(int)
-        )
-    return pivot_table
-
-
-def pivot_taxonomic_data_new(
+# this is a new extended method which is different from the momics method
+def pivot_taxonomic_data(
     df: pd.DataFrame,
     abundance_col: str = "abundance",
     tax_id_col: str = "ncbi_tax_id",

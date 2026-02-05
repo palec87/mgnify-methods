@@ -56,5 +56,19 @@ def test_abundance_and_back(emobon_taxonomy_raw_df):
     assert back_taxonomy_table.df.equals(taxonomy_table.df), "DataFrames should be equal after round-trip conversion."
 
 
+# def test_abundance_and_back_new_version(emobon_taxonomy_raw_df):
+#     """
+#     Test conversion from emobon Taxonomy raw DataFrame to AbundanceTable and back.
+#     """
+#     taxonomy_table = TaxonomyTable(emobon_taxonomy_raw_df)
+#     abundance_df = taxonomy_table.to_abundance_table()
+#     validate_abundance_ncbi(abundance_df.df)
+
+#     # Convert back to TaxonomyTable
+#     flag_has_ncbi, back_taxonomy_table = abundance_df.to_taxonomy_table_alt()
+#     assert flag_has_ncbi, "The abundance table should have NCBI taxonomy IDs."
+#     assert type(back_taxonomy_table).__name__== "TaxonomyTable", "Back conversion should yield a TaxonomyTable instance."
+#     assert back_taxonomy_table.df.equals(taxonomy_table.df), "DataFrames should be equal after round-trip conversion."
+
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -120,9 +120,9 @@ class TaxonomyTable(BaseTable):
         Convert taxonomy table to some standard abundance table.
         Replace pivot_taxonomic_data_new with your real implementation.
         """
-        from mgnify_methods.taxonomy import pivot_taxonomic_data_new
+        from mgnify_methods.taxonomy import pivot_taxonomic_data
 
-        pivot = pivot_taxonomic_data_new(self.df)
+        pivot = pivot_taxonomic_data(self.df)
         return AbundanceTable(pivot, source='abundance_processed')
 
 
@@ -140,65 +140,104 @@ class AbundanceTable(BaseTable):
         super().__init__(self.df, cfg.source)
 
 
-    def to_taxonomy_table(self, drop_zeros: bool = True) -> pd.DataFrame:
-        """Invert processed mgnify abundance table, ie pivoted taxonomy
-        back to long format compatible with TaxonomyTable."""
-        # detect first the mgnify processed format
+    # def to_taxonomy_table(self, drop_zeros: bool = True) -> pd.DataFrame:
+    #     """Invert processed mgnify abundance table, ie pivoted taxonomy
+    #     back to long format compatible with TaxonomyTable."""
+    #     # detect first the mgnify processed format
+    #     from .sources.detectors import is_abundance_ncbi, is_abundance_no_ncbi
+
+    #     if is_abundance_ncbi(self.df):
+    #         logger.info("DataFrame is abundance with ncbi_tax_id data.")
+    #         flag_has_ncbi = True
+    #     elif is_abundance_no_ncbi(self.df):
+    #         logger.warning("DataFrame is abundance without ncbi_tax_id data.")
+    #         flag_has_ncbi = False
+    #     else:
+    #         raise ValueError("DataFrame is not in valid Abundance processed format.")
+
+    #     reset = self.df.reset_index()
+
+    #     if flag_has_ncbi:
+    #         assert "ncbi_tax_id" in reset.columns, "Expected 'ncbi_tax_id' column in DataFrame."
+    #         melted = reset.melt(
+    #             id_vars=[c for c in ["taxonomic_concat", "ncbi_tax_id"] if c in reset.columns],
+    #             value_vars=[c for c in reset.columns if c not in ["taxonomic_concat", "ncbi_tax_id"]],
+    #             var_name='source material ID',
+    #             value_name="abundance",
+    #         )
+    #         melted = melted.set_index(['source material ID', 'ncbi_tax_id'])
+    #     else:
+    #         melted = reset.melt(
+    #             id_vars=[c for c in ["taxonomic_concat"] if c in reset.columns],
+    #             value_vars=[c for c in reset.columns if c not in ["taxonomic_concat"]],
+    #             var_name='source material ID',
+    #             value_name="abundance",
+    #         )
+    #         melted = melted.set_index(['source material ID'])
+
+    #     if drop_zeros:
+    #         melted = melted[melted["abundance"] != 0].copy()
+
+    #     try:
+    #         melted["abundance"] = melted["abundance"].astype(int)
+    #     except Exception:
+    #         melted["abundance"] = pd.to_numeric(melted["abundance"], errors="coerce")
+    #     logger.info(f"self.source before conversion to Taxonomy table {self.source}")
+
+    #     # convert the taxonomic_concat back to individual taxonomic ranks
+
+    #     if "taxonomic_concat" in melted.columns:
+    #         tax_split = melted["taxonomic_concat"].str.split(";", expand=True)
+    #         if flag_has_ncbi:
+    #             tax_split = tax_split.iloc[:, 1:]  # drop the ncbi id column
+
+    #         tax_split.columns = DEFAULT_RANKS
+            
+    #         # remove the prefixes
+    #         tax_split = tax_split.apply(lambda col: col.str.split("__").str[1])
+
+    #         # replace_trailing empty ranks with None, only if no lower rank is filled
+    #         tax_split = replace_trailing_empty_with_none(tax_split)
+
+    #         melted = pd.concat([melted.drop(columns=["taxonomic_concat"]), tax_split], axis=1)
+    #     melted = melted.sort_index()
+    #     return flag_has_ncbi, TaxonomyTable(melted, source='tax_processed')
+
+    def to_taxonomy_table(self, drop_zeros: bool = True) -> tuple[bool, TaxonomyTable]:
+        """Alternative implementation using invert_pivot_taxonomic_data from taxonomy.py.
+        
+        Invert processed mgnify abundance table (pivoted taxonomy) back to long format 
+        compatible with TaxonomyTable.
+        
+        Args:
+            drop_zeros: If True, rows with abundance == 0 are removed.
+            
+        Returns:
+            Tuple of (flag_has_ncbi, TaxonomyTable)
+        """
+        from mgnify_methods.taxonomy import invert_pivot_taxonomic_data
         from .sources.detectors import is_abundance_ncbi, is_abundance_no_ncbi
 
+        # Detect format
         if is_abundance_ncbi(self.df):
             logger.info("DataFrame is abundance with ncbi_tax_id data.")
             flag_has_ncbi = True
+            # Note: target_col[0] is used for parsing, so put taxonomic_concat first
+            target_col = ["taxonomic_concat", "ncbi_tax_id"]
         elif is_abundance_no_ncbi(self.df):
             logger.warning("DataFrame is abundance without ncbi_tax_id data.")
             flag_has_ncbi = False
+            target_col = ["taxonomic_concat"]
         else:
             raise ValueError("DataFrame is not in valid Abundance processed format.")
 
-        reset = self.df.reset_index()
-
-        if flag_has_ncbi:
-            assert "ncbi_tax_id" in reset.columns, "Expected 'ncbi_tax_id' column in DataFrame."
-            melted = reset.melt(
-                id_vars=[c for c in ["taxonomic_concat", "ncbi_tax_id"] if c in reset.columns],
-                value_vars=[c for c in reset.columns if c not in ["taxonomic_concat", "ncbi_tax_id"]],
-                var_name='source material ID',
-                value_name="abundance",
-            )
-            melted = melted.set_index(['source material ID', 'ncbi_tax_id'])
-        else:
-            melted = reset.melt(
-                id_vars=[c for c in ["taxonomic_concat"] if c in reset.columns],
-                value_vars=[c for c in reset.columns if c not in ["taxonomic_concat"]],
-                var_name='source material ID',
-                value_name="abundance",
-            )
-            melted = melted.set_index(['source material ID'])
-
-        if drop_zeros:
-            melted = melted[melted["abundance"] != 0].copy()
-
-        try:
-            melted["abundance"] = melted["abundance"].astype(int)
-        except Exception:
-            melted["abundance"] = pd.to_numeric(melted["abundance"], errors="coerce")
-        logger.info(f"self.source before conversion to Taxonomy table {self.source}")
-
-        # convert the taxonomic_concat back to individual taxonomic ranks
-
-        if "taxonomic_concat" in melted.columns:
-            tax_split = melted["taxonomic_concat"].str.split(";", expand=True)
-            if flag_has_ncbi:
-                tax_split = tax_split.iloc[:, 1:]  # drop the ncbi id column
-
-            tax_split.columns = DEFAULT_RANKS
-            
-            # remove the prefixes
-            tax_split = tax_split.apply(lambda col: col.str.split("__").str[1])
-
-            # replace_trailing empty ranks with None, only if no lower rank is filled
-            tax_split = replace_trailing_empty_with_none(tax_split)
-
-            melted = pd.concat([melted.drop(columns=["taxonomic_concat"]), tax_split], axis=1)
-        melted = melted.sort_index()
-        return flag_has_ncbi, TaxonomyTable(melted, source='tax_processed')
+        # Use the existing invert_pivot_taxonomic_data function
+        long_df = invert_pivot_taxonomic_data(
+            self.df, 
+            drop_zeros=drop_zeros,
+            target_col=target_col
+        )
+        
+        logger.info(f"self.source before conversion to Taxonomy table: {self.source}")
+        
+        return flag_has_ncbi, TaxonomyTable(long_df, source='tax_processed')
