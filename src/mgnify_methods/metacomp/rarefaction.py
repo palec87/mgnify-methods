@@ -3,7 +3,6 @@ import numpy as np
 import pickle
 import pandas as pd
 from tqdm import tqdm
-from typing import TYPE_CHECKING
 from collections import defaultdict
 from mgnify_methods.taxonomy import (
     aggregate_by_taxonomic_level,
@@ -17,9 +16,6 @@ from momics.taxonomy import (
 
 from mgnify_methods.utils.logging import get_logger
 logger = get_logger(__name__, level="INFO")
-
-# if TYPE_CHECKING:
-from mgnify_methods.tables import TaxonomyTable
 
 # def calc_rarefaction_curves(abund_table, metadata, curves):
 #     for sample in tqdm(abund_table.columns):
@@ -68,79 +64,50 @@ def calc_rarefaction_curves(table, analysis_meta, curves, feature):
     return curves
 
 
-def calculate_min_rarefaction_depth(
-    tax_level: str,
-    dropna: bool, 
-    taxonomy_table: TaxonomyTable,
-    config: dict
-) -> int:
+def calculate_min_rarefaction_depth(abundance_df: pd.DataFrame) -> int:
     min_depth = 1e9
-    long_df_filt = aggregate_by_taxonomic_level(
-        taxonomy_table.df_filt, level=tax_level, dropna=dropna
-    )
-    df_filt_pivot = pivot_taxonomic_data(long_df_filt)
-    df_filt_pivot = prevalence_cutoff_abund(
-        df_filt_pivot, 
-        percent=config['filtering']['prevalence_percent'], 
-        skip_columns=0
-    )
-    df_filt_pivot = rarefy_table(df_filt_pivot, depth=None)
-    min_depth = min(min_depth, df_filt_pivot.sum().min())
+
+    abundance_df = rarefy_table(abundance_df, depth=None)
+    min_depth = int(min(min_depth, abundance_df.sum().min()))
     
-    logger.info(f"Minimum rarefaction depth: {int(min_depth)}")
-    return int(min_depth)
+    logger.info(f"Minimum rarefaction depth: {min_depth}")
+    return min_depth
 
 
-def rarefy_all_taxon(taxonomy_table: TaxonomyTable, analysis_meta: pd.DataFrame, config):
+def rarefy_taxon(abundance_df: pd.DataFrame, config):
     logger.info("\n=== Rarefaction Curves per Taxonomic Level ===")
     tax_level = config['taxonomy']['analysis_level']
-    sample_type = config['samples']['sample_type']
-    dropna = config['diversity']['alpha']['dropna']
 
-    min_depth = config['rarefaction']['depth'] or calculate_min_rarefaction_depth(
-        tax_level, 
-        dropna=dropna,
-        taxonomy_table=taxonomy_table,
-        config=config
+    min_depth = (
+        config.get('preprocess', {})
+        .get('method_params', {})
+        .get('rarefaction', {})
+        .get('depth')
     )
-    
-    pkl_path = Path(config['input']['cache_dir']) / f"rarefaction_curves_{tax_level}.pkl"
-    rarefied_tables = {sample_type: {}}
-    
-    # Check if already computed
-    if pkl_path.exists():
-        logger.info("Loading cached rarefaction curves...")
-        with open(pkl_path, 'rb') as f:
-            curves_per_feature = pickle.load(f)
-        calc_rarefaction = False
-    else:
-        logger.info("Computing rarefaction curves...")
-        calc_rarefaction = True
-        curves_per_feature = {}
-    
-    # Process each taxonomic level
-    logger.info(f"  Processing {tax_level}...")
-    long_df_filt = aggregate_by_taxonomic_level(
-        taxonomy_table.df_filt, level=tax_level, dropna=dropna
-    )
-    df_filt_pivot = pivot_taxonomic_data(long_df_filt)
-    df_filt_pivot = prevalence_cutoff_abund(
-        df_filt_pivot, 
-        percent=config['filtering']['prevalence_percent'], 
-        skip_columns=0
-    )
-    
-    if calc_rarefaction:
-        curves = defaultdict(list)
-        curves = calc_rarefaction_curves(df_filt_pivot, analysis_meta, curves, feature=config['feature'])
-        curves_per_feature[tax_level] = curves
-    
-    df_filt_pivot = rarefy_table(df_filt_pivot, depth=min_depth)
-    rarefied_tables[sample_type][tax_level] = df_filt_pivot
-    
-    if calc_rarefaction:
-        with open(pkl_path, 'wb') as f:
-            pickle.dump(curves_per_feature, f)
-        logger.info("Rarefaction curves cached.")
 
-    return rarefied_tables, curves_per_feature
+    # pkl_path = Path(config['input']['cache_dir']) / f"rarefaction_curves_{tax_level}.pkl"
+    # # Check if already computed
+    # if pkl_path.exists():
+    #     logger.info("Loading cached rarefaction curves...")
+    #     with open(pkl_path, 'rb') as f:
+    #         curves_per_feature = pickle.load(f)
+    #     calc_rarefaction = False
+    # else:
+    #     logger.info("Computing rarefaction curves...")
+    #     calc_rarefaction = True
+    #     curves_per_feature = {}
+    
+    # if calc_rarefaction:
+    #     curves = defaultdict(list)
+    #     curves = calc_rarefaction_curves(df_filt_pivot, analysis_meta, curves, feature=config['feature'])
+    #     curves_per_feature[tax_level] = curves
+    
+    # df_filt_pivot = rarefy_table(df_filt_pivot, depth=min_depth)
+    rarefied_tables = {tax_level: rarefy_table(abundance_df, depth=min_depth)}
+    
+    # if calc_rarefaction:
+    #     with open(pkl_path, 'wb') as f:
+    #         pickle.dump(curves_per_feature, f)
+    #     logger.info("Rarefaction curves cached.")
+
+    return rarefied_tables
