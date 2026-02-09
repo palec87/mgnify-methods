@@ -1,5 +1,5 @@
-import os
 import re
+from pathlib import Path
 from datetime import datetime
 import pandas as pd
 import json
@@ -39,7 +39,7 @@ def fetch_samples_metadata(folder, analysisId):
 
 
 def import_taxonomy_summary(folder, path):
-    df_tax_summary = pd.read_csv(os.path.join(folder, path), sep='\t')
+    df_tax_summary = pd.read_csv(Path(folder) / path, sep='\t')
 
     # df_tax_summary.rename(columns={'#SampleID': 'taxonomy'}, inplace=True)
     df_tax_summary.set_index('#SampleID', inplace=True)
@@ -188,11 +188,12 @@ def filter_number_reads(sample_total_dict,cutoff):
 # IO helpers
 # ---------------------------
 def save_config(config: Dict[str, Any], out_dir: str, filename: str = "config.json") -> str:
-    os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, filename)
+    out_dir_path = Path(out_dir)
+    out_dir_path.mkdir(parents=True, exist_ok=True)
+    path = out_dir_path / filename
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, sort_keys=True)
-    return path
+    return str(path)
 
 
 def extract_first_date(x):

@@ -1,4 +1,3 @@
-import os
 import sys
 import json
 import numpy as np
@@ -228,7 +227,8 @@ def plot_taxonomic_overlap(taxonomy_table: TaxonomyTable, analysis_meta: pd.Data
     
     plt.tight_layout()
     if config['plots']['save_figures']:
-        plt.savefig(os.path.join(config['output']['out_folder'], 'taxonomic_overlap.png'), 
+        out_dir = Path(config['output']['out_folder'])
+        plt.savefig(out_dir / 'taxonomic_overlap.png', 
                    dpi=config['plots']['dpi'])
     plt.show()
 
@@ -279,7 +279,8 @@ def violin_plot_taxon(comp_tables, analysis_meta, config):
     plt.tight_layout()
     
     if config['plots']['save_figures']:
-        plt.savefig(os.path.join(config['output']['out_folder'], 'taxa_prevalence_violin.png'), 
+        out_dir = Path(config['output']['out_folder'])
+        plt.savefig(out_dir / 'taxa_prevalence_violin.png', 
                    dpi=config['plots']['dpi'])
     plt.show()
 # -----------------------

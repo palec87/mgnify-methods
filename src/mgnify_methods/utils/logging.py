@@ -5,7 +5,7 @@ Use Logger.get_logger(__name__) to get a configured logger.
 from __future__ import annotations
 
 import logging
-import os
+from pathlib import Path
 from typing import Optional, Union
 
 
@@ -60,11 +60,11 @@ class Logger:
     @classmethod
     def _add_file_handler(cls, log_file: str, fmt: str, datefmt: str) -> None:
         root = logging.getLogger()
-        log_path = os.path.abspath(log_file)
+        log_path = Path(log_file).resolve()
 
         for handler in root.handlers:
             if isinstance(handler, logging.FileHandler):
-                if os.path.abspath(handler.baseFilename) == log_path:
+                if Path(handler.baseFilename).resolve() == log_path:
                     return
 
         file_handler = logging.FileHandler(log_path)

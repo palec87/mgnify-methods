@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 import numpy as np
 import pickle
 import pandas as pd
@@ -104,11 +104,11 @@ def rarefy_all_taxon(taxonomy_table: TaxonomyTable, analysis_meta: pd.DataFrame,
         config=config
     )
     
-    pkl_path = os.path.join(config['input']['cache_dir'], f"rarefaction_curves_{tax_level}.pkl")
+    pkl_path = Path(config['input']['cache_dir']) / f"rarefaction_curves_{tax_level}.pkl"
     rarefied_tables = {sample_type: {}}
     
     # Check if already computed
-    if os.path.exists(pkl_path):
+    if pkl_path.exists():
         logger.info("Loading cached rarefaction curves...")
         with open(pkl_path, 'rb') as f:
             curves_per_feature = pickle.load(f)

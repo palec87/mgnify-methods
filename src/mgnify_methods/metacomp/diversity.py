@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 import pandas as pd
 try:
@@ -118,8 +118,9 @@ def beta_diversity_analysis(taxonomy_table: TaxonomyTable, analysis_meta: pd.Dat
         plt.tight_layout()
         
         if config['plots']['save_figures']:
-            plt.savefig(os.path.join(config['output']['out_folder'], f'beta_pcoa_{feature}.png'), 
-                    dpi=config['plots']['dpi'], bbox_inches='tight')
+            out_dir = Path(config['output']['out_folder'])
+            plt.savefig(out_dir / f"beta_pcoa_{feature}.png", 
+                dpi=config['plots']['dpi'], bbox_inches='tight')
         plt.show()
 
 
@@ -172,7 +173,8 @@ def alpha_diversity_analysis(taxonomy_table: TaxonomyTable,
     )
     
     # Save results
-    diversity_path = os.path.join(config['output']['out_folder'], f'alpha_diversity_{tax_level_for_diversity}.csv')
+    out_dir = Path(config['output']['out_folder'])
+    diversity_path = out_dir / f"alpha_diversity_{tax_level_for_diversity}.csv"
     diversity_df.to_csv(diversity_path, index=False)
     logger.info(f"\nSaved diversity results to: {diversity_path}")
     
@@ -188,7 +190,7 @@ def alpha_diversity_analysis(taxonomy_table: TaxonomyTable,
         fig_alpha = create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_diversity, feature)
         if config['plots']['save_figures']:
             fig_alpha.savefig(
-                os.path.join(config['output']['out_folder'], f'alpha_diversity_{tax_level_for_diversity}.png'),
+                out_dir / f"alpha_diversity_{tax_level_for_diversity}.png",
                 dpi=config['plots']['dpi'], bbox_inches='tight'
             )
         plt.show()

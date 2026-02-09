@@ -3,7 +3,7 @@ MGnify API interaction module.
 
 Provides functions to retrieve data and metadata from the MGnify API.
 """
-import os
+from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 from jsonapi_client import Session as APISession
@@ -66,14 +66,15 @@ def retrieve_summary(studyId: str, matching_string: str = 'Taxonomic assignments
     from urllib.request import urlretrieve
 
 
-    os.makedirs(out_dir, exist_ok=True)
-    tsv_path = os.path.join(out_dir, f'{studyId}.tsv')
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tsv_path = out_dir / f"{studyId}.tsv"
 
     with APISession("https://www.ebi.ac.uk/metagenomics/api/v1") as session:
         for download in session.iterate(f"studies/{studyId}/downloads"):
             if download.description.label == matching_string:
-                urlretrieve(download.links.self.url, tsv_path)
-                return tsv_path
+                urlretrieve(download.links.self.url, str(tsv_path))
+                return str(tsv_path)
 
     raise FileNotFoundError(f"No download matched '{matching_string}' for study {studyId}")
 
