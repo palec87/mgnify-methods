@@ -8,14 +8,11 @@ from jsonapi_client import Session as APISession
 from .api import get_mgnify_metadata
 
 from momics.metadata import (
-    # process_collection_date,
     extract_season,
 )
 
-# setup logging
-import logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+from mgnify_methods.utils.logging import get_logger
+logger = get_logger(__name__, level="INFO")
 
 def fetch_analysis_metadata(folder, analysisId):
     try:
@@ -68,6 +65,21 @@ def process_analysis_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
     return analysis_meta
 
 
+def filter_analysis_meta(analysis_meta, samples_meta):
+    to_drop = []
+    for sample in analysis_meta.index:
+        data_id = analysis_meta.loc[sample, 'relationships.sample.data.id']
+        if data_id not in samples_meta['id'].values:
+            to_drop.append(sample)
+
+    if to_drop:
+        bef = analysis_meta.shape[0]
+        analysis_meta = analysis_meta[~analysis_meta.index.isin(to_drop)]
+        after = analysis_meta.shape[0]
+        logger.info(f"Dropped {len(to_drop)} samples from analysis_meta: {bef} -> {after}")
+    return analysis_meta
+
+
 def process_samples_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
     samples_meta_dfs = {}
     for k, values in ds_dict.items():
@@ -98,6 +110,67 @@ def enhance_samples_metadata(samples_meta: pd.DataFrame) -> pd.DataFrame:
     after = samples_meta.shape[0]
     logger.info(f"Filtered samples to prokaryotes only: {bef} -> {after}")
     return samples_meta
+
+
+def extract_feature_to_analysis_meta(factors_df, feature, samples_meta, analysis_meta):
+    for sample in factors_df.index:
+        sample_meta_row = samples_meta[
+                samples_meta['id'] == analysis_meta.loc[sample, 'relationships.sample.data.id']
+            ]
+        factors_df.loc[sample, feature] = (
+                sample_meta_row[feature].iloc[0] 
+                if not sample_meta_row.empty and feature in sample_meta_row.columns 
+                else 'Unknown'
+            )
+        
+    return factors_df
+
+
+def load_taxonomy_summary(ds, data_folder):
+    # Load taxonomy summaries
+    dfs = {}
+    for k, values in ds.items():
+        path = values[1]
+        dfs[k] = import_taxonomy_summary(data_folder, path)
+        logger.info(f"Loaded {k}: {dfs[k].shape}")
+
+    # Merge all taxonomy dataframes
+    from functools import reduce
+    df_tax_summary = reduce(
+        lambda left, right: pd.merge(left, right, on='#SampleID', how='outer'),
+        dfs.values()
+    )
+    df_tax_summary = df_tax_summary.astype("Int32").fillna(0)
+    logger.info(f"\nMerged taxonomy table: {df_tax_summary.shape}")
+    return df_tax_summary
+
+
+def filter_tax_summary(df, analysis_meta):
+    # Filter taxonomy table to match analysis_meta
+    logger.info(f'\nTaxonomy samples before filtering: {df.shape[1]}')
+    for col in df.columns:
+        if col not in analysis_meta.index:
+            df.drop(columns=[col], inplace=True)
+    logger.info(f'Taxonomy samples after filtering: {df.shape[1]}')
+
+    # Remove taxa with all zero counts
+    zero_rows = df[(df == 0).all(axis=1)]
+    logger.info(f"\nRemoving {zero_rows.shape[0]} taxa with all zero counts")
+    df = df.loc[~(df == 0).all(axis=1)]
+    return df
+
+
+def assert_taxonomy_integrity(df, analysis_meta):
+    # Verify data integrity
+    assert len(df[df.index=='sk__Archaea']) == 1, "Missing Archaea row"
+    assert len(df[df.index=='sk__Eukaryota']) == 1, "Missing Eukaryota row"
+    assert analysis_meta['relationships.sample.data.id'].size == len(df.columns), "Sample count mismatch"
+
+    lst1 = sorted(analysis_meta.index.tolist())
+    lst2 = sorted(df.columns.tolist())
+    assert lst1 == lst2, "Sample IDs don't match between metadata and taxonomy"
+
+    logger.info("\n✓ Data tables synchronized successfully")
 
 
 def filter_number_reads(sample_total_dict,cutoff):

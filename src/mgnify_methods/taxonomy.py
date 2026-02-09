@@ -2,6 +2,9 @@ import pandas as pd
 from typing import Any, Dict, Sequence
 
 
+from mgnify_methods.utils.logging import get_logger
+logger = get_logger(__name__, level="INFO")
+
 # ---------------------------
 # Taxonomy utilities
 # ---------------------------

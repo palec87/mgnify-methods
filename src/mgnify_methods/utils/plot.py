@@ -1,13 +1,28 @@
+import os
 import sys
 import json
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Optional, Sequence, Tuple, Iterable
+from typing import Dict, Optional, Sequence, Tuple, Iterable, TYPE_CHECKING
 import seaborn as sns
 from matplotlib import pyplot as plt
 from mgnify_methods.stats import extract_sample_stats
 from mgnify_methods.metacomp.rarefaction import rarefaction_curve
+# if TYPE_CHECKING:
+from mgnify_methods.tables import TaxonomyTable
+
+from mgnify_methods.taxonomy import (
+    aggregate_by_taxonomic_level,
+    pivot_taxonomic_data,
+)
+
+# Venn diagrams
+from matplotlib_venn import venn2, venn3
+
+from mgnify_methods.utils.logging import get_logger
+logger = get_logger(__name__, level="INFO")
 
 
 def plot_rarefaction_mgnify(abund_table, metadata, every_nth=20, ax=None, title="Rarefaction curves per sample"):
@@ -178,6 +193,95 @@ def plot_season_reads_hist(
         **kwargs
     )
 
+def plot_taxonomic_overlap(taxonomy_table: TaxonomyTable, analysis_meta: pd.DataFrame, config):
+    tax_level = config['taxonomy']['analysis_level']
+    _, ax = plt.subplots(figsize=(6, 8))
+
+    long_df_filt = aggregate_by_taxonomic_level(
+        taxonomy_table.df_filt, level=tax_level, dropna=False
+    )
+    df_filt_pivot = pivot_taxonomic_data(long_df_filt)
+    df_filt_pivot = df_filt_pivot[(df_filt_pivot > 0).any(axis=1)]
+    
+    if config['taxonomy']['filter_to_bacteria']:
+        df_filt_pivot = df_filt_pivot[df_filt_pivot.index.str.startswith('sk__Bacteria')]
+    
+    sets = []
+    labels = list(config['datasets'].keys())
+    for study in labels:
+        sample_ids = analysis_meta[analysis_meta['study_tag'] == study].index.tolist()
+        sample_ids = [s for s in sample_ids if s in df_filt_pivot.columns]
+        taxa_in_study = set(df_filt_pivot[sample_ids][df_filt_pivot[sample_ids].sum(axis=1) > 0].index.tolist())
+        sets.append(taxa_in_study)
+    
+    if len(sets) == 2:
+        venn2(subsets=(sets[0], sets[1]), set_labels=labels, ax=ax)
+    elif len(sets) == 3:
+        venn3(subsets=(sets[0], sets[1], sets[2]), set_labels=labels, ax=ax)
+    else:
+        ax.text(0.5, 0.5, f"Venn not supported for {len(sets)} sets", 
+                ha='center', va='center')
+        ax.set_xticks([])
+        ax.set_yticks([])
+    
+    ax.set_title(f'Taxonomic overlap at {tax_level} level')
+    
+    plt.tight_layout()
+    if config['plots']['save_figures']:
+        plt.savefig(os.path.join(config['output']['out_folder'], 'taxonomic_overlap.png'), 
+                   dpi=config['plots']['dpi'])
+    plt.show()
+
+
+def violin_plot_taxon(comp_tables, analysis_meta, config):
+    if not config['plots']['taxa_prevalence_violin']:
+        return
+    
+    tax_level = config['taxonomy']['analysis_level']
+    logger.info(f"\n=== Taxa Prevalence for Taxonomic Level {tax_level} ===")
+    feature = config['feature']
+    sample_type = config['samples']['sample_type']
+    
+    _, ax = plt.subplots(figsize=(8, 5))
+    
+    combined = []
+    for tax, table in comp_tables[sample_type].items():
+        df = table > 0
+        combined.append(df.sum().reset_index().assign(tax=tax))
+    
+    df_all = pd.concat(combined, ignore_index=True)
+    df_all.rename(columns={0: 'counts', 'tax': 'taxon'}, inplace=True)
+    df_all = df_all.merge(
+        analysis_meta[[feature]],
+        left_on='index',
+        right_index=True,
+        how='left'
+    )
+    
+    sns.violinplot(
+        data=df_all,
+        x="taxon", y="counts",
+        inner=None, color="lightgray",
+        ax=ax
+    )
+    
+    sns.stripplot(
+        data=df_all,
+        x="taxon", y="counts",
+        dodge=True,
+        hue=feature,
+        jitter=True, alpha=0.7,
+        ax=ax
+    )
+    
+    ax.set_title(f"Number of taxa present at {tax_level} level (rarefied)")
+    ax.set_ylabel("Taxa prevalence (number of samples)")
+    plt.tight_layout()
+    
+    if config['plots']['save_figures']:
+        plt.savefig(os.path.join(config['output']['out_folder'], 'taxa_prevalence_violin.png'), 
+                   dpi=config['plots']['dpi'])
+    plt.show()
 # -----------------------
 # Plotting and saving
 # -----------------------
@@ -342,7 +446,7 @@ def save_plot_with_metadata(
             **kwargs
         )
         saved_files[fmt] = str(plot_path)
-        print(f"Saved {fmt.upper()}: {plot_path}")
+        logger.info(f"Saved {fmt.upper()}: {plot_path}")
     
     # Save metadata as JSON
     metadata_path = out_dir / f"{base_name}_metadata.json"
@@ -370,8 +474,8 @@ def save_plot_with_metadata(
         "base_name": base_name
     }
     
-    print(f"Metadata saved: {metadata_path}")
-    print(f"Description saved: {desc_path}")
+    logger.info(f"Metadata saved: {metadata_path}")
+    logger.info(f"Description saved: {desc_path}")
     
     return result
 
@@ -560,30 +664,30 @@ def plot_mean_std(
     return ax
 
 
-def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_diversity):
+def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_diversity, feature):
     # Create comprehensive alpha diversity plots with study_tag as hue
     fig, axes = plt.subplots(3, 2, figsize=(15, 12))
     axes = axes.flatten()
 
     # Plot 1: Shannon diversity by study
-    sns.boxplot(data=diversity_df, x='study_tag', y='shannon', ax=axes[0])
-    sns.stripplot(data=diversity_df, x='study_tag', y='shannon', 
+    sns.boxplot(data=diversity_df, x=feature, y='shannon', ax=axes[0])
+    sns.stripplot(data=diversity_df, x=feature, y='shannon', 
               color='black', alpha=0.6, size=4, ax=axes[0])
     axes[0].set_title(f'Shannon Diversity by Study\n(Taxonomic level: {tax_level_for_diversity})')
     axes[0].set_ylabel('Shannon Index')
     axes[0].set_xlabel('Study')
 
     # Plot 2: Simpson diversity by study
-    sns.boxplot(data=diversity_df, x='study_tag', y='simpson', ax=axes[1])
-    sns.stripplot(data=diversity_df, x='study_tag', y='simpson', 
+    sns.boxplot(data=diversity_df, x=feature, y='simpson', ax=axes[1])
+    sns.stripplot(data=diversity_df, x=feature, y='simpson', 
               color='black', alpha=0.6, size=4, ax=axes[1])
     axes[1].set_title(f'Simpson Diversity by Study\n(Taxonomic level: {tax_level_for_diversity})')
     axes[1].set_ylabel('Simpson Index')
     axes[1].set_xlabel('Study')
 
     # Plot 3: Observed OTUs by study
-    sns.boxplot(data=diversity_df, x='study_tag', y='observed_otus', ax=axes[2])
-    sns.stripplot(data=diversity_df, x='study_tag', y='observed_otus', 
+    sns.boxplot(data=diversity_df, x=feature, y='observed_otus', ax=axes[2])
+    sns.stripplot(data=diversity_df, x=feature, y='observed_otus', 
               color='black', alpha=0.6, size=4, ax=axes[2])
     axes[2].set_title(f'Observed Taxa by Study\n(Taxonomic level: {tax_level_for_diversity})')
     axes[2].set_ylabel('Number of Observed Taxa')
@@ -591,16 +695,16 @@ def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_
 
     # Plot 4: Shannon vs Simpson colored by study_tag
     sns.scatterplot(data=diversity_df, x='shannon', y='simpson', 
-                hue='study_tag', s=60, alpha=0.7, ax=axes[3])
+                hue=feature, s=60, alpha=0.7, ax=axes[3])
     axes[3].set_title('Shannon vs Simpson Diversity by Study')
     axes[3].set_xlabel('Shannon Index')
     axes[3].set_ylabel('Simpson Index')
 
 
     # Plot 5: Chao1 diversity by study
-    sns.boxplot(data=diversity_df, x='study_tag', y='chao1', ax=axes[4])
+    sns.boxplot(data=diversity_df, x=feature, y='chao1', ax=axes[4])
     sns.stripplot(
-        data=diversity_df, x='study_tag', y='chao1', 
+        data=diversity_df, x=feature, y='chao1', 
         color='black', alpha=0.6, size=4, ax=axes[4]
     )
     axes[4].set_title(f'Chao1 Diversity by Study\n(Taxonomic level: {tax_level_for_diversity})')
@@ -611,34 +715,34 @@ def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_
     # Statistical comparison between studies
     from scipy.stats import mannwhitneyu, kruskal
 
-    print("\n" + "="*60)
-    print("STATISTICAL COMPARISON OF ALPHA DIVERSITY BETWEEN STUDIES")
-    print("="*60)
+    logger.info("\n" + "="*60)
+    logger.info("STATISTICAL COMPARISON OF ALPHA DIVERSITY BETWEEN STUDIES")
+    logger.info("="*60)
 
-    studies = diversity_df['study_tag'].unique()
+    studies = diversity_df[feature].unique()
     if len(studies) == 2:
         for metric in diversity_metrics:
-            study1_data = diversity_df[diversity_df['study_tag'] == studies[0]][metric]
-            study2_data = diversity_df[diversity_df['study_tag'] == studies[1]][metric]
+            study1_data = diversity_df[diversity_df[feature] == studies[0]][metric]
+            study2_data = diversity_df[diversity_df[feature] == studies[1]][metric]
         
             statistic, p_value = mannwhitneyu(study1_data, study2_data, alternative='two-sided')
         
-            print(f"\n{metric.upper()} - Mann-Whitney U test:")
-            print(f"  {studies[0]} (n={len(study1_data)}): median = {study1_data.median():.3f}")
-            print(f"  {studies[1]} (n={len(study2_data)}): median = {study2_data.median():.3f}")
-            print(f"  U-statistic = {statistic:.3f}, p-value = {p_value:.4f}")
-            print(f"  Significant difference: {'Yes' if p_value < 0.05 else 'No'}")
+            logger.info(f"\n{metric.upper()} - Mann-Whitney U test:")
+            logger.info(f"  {studies[0]} (n={len(study1_data)}): median = {study1_data.median():.3f}")
+            logger.info(f"  {studies[1]} (n={len(study2_data)}): median = {study2_data.median():.3f}")
+            logger.info(f"  U-statistic = {statistic:.3f}, p-value = {p_value:.4f}")
+            logger.info(f"  Significant difference: {'Yes' if p_value < 0.05 else 'No'}")
 
     elif len(studies) > 2:
         for metric in diversity_metrics:
-            study_groups = [diversity_df[diversity_df['study_tag'] == study][metric] for study in studies]
+            study_groups = [diversity_df[diversity_df[feature] == study][metric] for study in studies]
             statistic, p_value = kruskal(*study_groups)
         
-            print(f"\n{metric.upper()} - Kruskal-Wallis test:")
+            logger.info(f"\n{metric.upper()} - Kruskal-Wallis test:")
             for study in studies:
-                study_data = diversity_df[diversity_df['study_tag'] == study][metric]
-                print(f"  {study} (n={len(study_data)}): median = {study_data.median():.3f}")
-            print(f"  H-statistic = {statistic:.3f}, p-value = {p_value:.4f}")
-            print(f"  Significant difference: {'Yes' if p_value < 0.05 else 'No'}")
+                study_data = diversity_df[diversity_df[feature] == study][metric]
+                logger.info(f"  {study} (n={len(study_data)}): median = {study_data.median():.3f}")
+            logger.info(f"  H-statistic = {statistic:.3f}, p-value = {p_value:.4f}")
+            logger.info(f"  Significant difference: {'Yes' if p_value < 0.05 else 'No'}")
 
     return fig

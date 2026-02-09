@@ -248,7 +248,7 @@ def calculate_observed_otus(abundance_data):
     abundances = np.array(abundance_data)
     return np.sum(abundances > 0)
 
-def alpha_diversity_report(df_diversity, factors_df):
+def alpha_diversity_report(df_diversity, factors_df, feature='season'):
     """Calculate and report alpha diversity metrics.
     
     """
@@ -265,14 +265,14 @@ def alpha_diversity_report(df_diversity, factors_df):
         chao1_skbio = chao1(abundance_vector)
         
         # Get metadata
-        study_tag = factors_df.loc[sample, 'study_tag']
-        season = factors_df.loc[sample, 'season']
+        # study_tag = factors_df.loc[sample, 'study_tag']
+        feature_value = factors_df.loc[sample, feature]
         
         # Store results
         diversity_results.append({
             'sample_id': sample,
-            'study_tag': study_tag,
-            'season': season,
+            # 'study_tag': study_tag,
+            feature: feature_value,
             'shannon': shannon_skbio,
             'simpson': simpson_skbio,
             'chao1': chao1_skbio,
