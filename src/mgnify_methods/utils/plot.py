@@ -100,6 +100,7 @@ def plot_feature_reads_hist(
     # Extract reads metadata per sample
     not_matched = 0
     for sample in analysis_meta.index:
+        logger.info(f'sample is {sample}')
         try:
             data_id = analysis_meta.at[sample, 'relationships.sample.data.id']
             feature_value = samples_meta[samples_meta['id'] == data_id][feature].values[0]
@@ -113,6 +114,9 @@ def plot_feature_reads_hist(
     # Plot histogram per feature value
     fig, ax = plt.subplots(figsize=figsize)
     feature_stats = {}
+    all_totals = [stat[0] for stats in total_dict.values() for _, stat in stats.items()]
+    if isinstance(bins, int) and all_totals:
+        bins = np.histogram_bin_edges(all_totals, bins=bins)
     
     for feature_val, stats in total_dict.items():
         if not stats:  # Skip empty groups

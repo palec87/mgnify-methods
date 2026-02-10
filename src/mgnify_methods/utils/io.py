@@ -66,17 +66,14 @@ def process_analysis_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
 
 
 def filter_analysis_meta(analysis_meta, samples_meta):
-    to_drop = []
-    for sample in analysis_meta.index:
-        data_id = analysis_meta.loc[sample, 'relationships.sample.data.id']
-        if data_id not in samples_meta['id'].values:
-            to_drop.append(sample)
+    valid_ids = set(samples_meta['id'].tolist())
+    mask = analysis_meta['relationships.sample.data.id'].isin(valid_ids)
 
-    if to_drop:
+    if not mask.all():
         bef = analysis_meta.shape[0]
-        analysis_meta = analysis_meta[~analysis_meta.index.isin(to_drop)]
+        analysis_meta = analysis_meta[mask]
         after = analysis_meta.shape[0]
-        logger.info(f"Dropped {len(to_drop)} samples from analysis_meta: {bef} -> {after}")
+        logger.info(f"Dropped {bef - after} samples from analysis_meta: {bef} -> {after}")
     return analysis_meta
 
 

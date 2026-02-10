@@ -1,5 +1,6 @@
 
 import ast
+import itertools
 import numpy as np
 import pandas as pd
 from scipy.stats import t as _t_dist
@@ -312,8 +313,6 @@ def compare_alpha_diversities(diversity_df, diversity_metrics, feature):
 
             delta_median = g1.median() - g2.median()
             rbc = 1 - (2 * U) / (len(g1) * len(g2))
-
-            import itertools
 
             gt = sum(a > b for a, b in itertools.product(g1, g2))
             lt = sum(a < b for a, b in itertools.product(g1, g2))
