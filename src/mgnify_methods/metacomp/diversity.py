@@ -12,7 +12,11 @@ from mgnify_methods.utils.plot import (
     create_alpha_diversity_plots,
 )
 
-from mgnify_methods.stats import extract_feature_dict, alpha_diversity_report
+from mgnify_methods.stats import (
+    extract_feature_dict,
+    alpha_diversity_report,
+    compare_alpha_diversities,
+)
 from mgnify_methods.taxonomy import (
     aggregate_by_taxonomic_level,
     pivot_taxonomic_data,
@@ -124,30 +128,19 @@ def beta_diversity_analysis(taxonomy_table: TaxonomyTable, analysis_meta: pd.Dat
         plt.show()
 
 
-def alpha_diversity_analysis(taxonomy_table: TaxonomyTable,
-                             analysis_meta: pd.DataFrame, samples_meta: pd.DataFrame,
-                             config: dict):
+def alpha_diversity_analysis(
+        abundance_table: pd.DataFrame,
+        analysis_meta: pd.DataFrame,
+        samples_meta: pd.DataFrame,
+        config: dict):
     logger.info("\n=== Alpha Diversity Analysis ===")
-    
-    dropna = config['diversity']['alpha']['dropna']
-    tax_level_for_diversity = config['taxonomy']['analysis_level']
+    tax_level = config['taxonomy']['analysis_level']
     feature = config['feature']
-    
-    logger.info(f"Analyzing at {tax_level_for_diversity} level...")
-    
-    # Aggregate data
-    long_df_filt = aggregate_by_taxonomic_level(
-        taxonomy_table.df_filt, level=tax_level_for_diversity, dropna=dropna
-    )
-    df_diversity_pivot = pivot_taxonomic_data(long_df_filt)
-    
-    # Optional: Remove singletons
-    if config['filtering']['remove_singletons']:
-        df_diversity_pivot = remove_singletons_per_sample(df_diversity_pivot, skip_columns=0)
-        logger.info("Removed singletons per sample")
+    logger.info(f"Analyzing at {tax_level} level...")
+
     
     # Transpose for diversity calculation
-    df_diversity_transposed = df_diversity_pivot.T
+    df_diversity_transposed = abundance_table.T
     df_diversity_transposed.index.name = 'sample_id'
     
     # Create factors DataFrame
@@ -156,7 +149,6 @@ def alpha_diversity_analysis(taxonomy_table: TaxonomyTable,
         logger.info(f"Feature '{feature}' not found in analysis metadata. Attempting to extract from sample metadata...")
         # Add season information
         factors_df = extract_feature_to_analysis_meta(factors_df, feature, samples_meta=samples_meta, analysis_meta=analysis_meta)
-        # display(factors_df)
     else:
         factors_df[feature] = factors_df.index.map(
             lambda x: analysis_meta[analysis_meta.index == x][feature].iloc[0]
@@ -174,7 +166,12 @@ def alpha_diversity_analysis(taxonomy_table: TaxonomyTable,
     
     # Save results
     out_dir = Path(config['output']['out_folder'])
-    diversity_path = out_dir / f"alpha_diversity_{tax_level_for_diversity}.csv"
+    try:
+        tag = config['output']['alpha_tag']
+        diversity_path = out_dir / f"alpha_diversity_{tax_level}_{tag}.csv"
+    except KeyError:
+        diversity_path = out_dir / f"alpha_diversity_{tax_level}.csv"
+
     diversity_df.to_csv(diversity_path, index=False)
     logger.info(f"\nSaved diversity results to: {diversity_path}")
     
@@ -187,10 +184,18 @@ def alpha_diversity_analysis(taxonomy_table: TaxonomyTable,
     
     # Plot diversity
     if config['plots']['alpha_diversity']:
-        fig_alpha = create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_diversity, feature)
+        fig_alpha = create_alpha_diversity_plots(diversity_df, tax_level, feature)
         if config['plots']['save_figures']:
             fig_alpha.savefig(
-                out_dir / f"alpha_diversity_{tax_level_for_diversity}.png",
+                out_dir / f"alpha_diversity_{tax_level}.png",
                 dpi=config['plots']['dpi'], bbox_inches='tight'
             )
         plt.show()
+
+    stats_df = compare_alpha_diversities(diversity_df, diversity_metrics, feature)
+    if display is not None:
+        display(stats_df)
+    else:
+        print(stats_df)
+
+    return summary_df, diversity_df, stats_df

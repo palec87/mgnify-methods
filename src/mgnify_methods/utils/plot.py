@@ -665,7 +665,7 @@ def plot_mean_std(
     return ax
 
 
-def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_diversity, feature):
+def create_alpha_diversity_plots(diversity_df, tax_level, feature):
     # Create comprehensive alpha diversity plots with study_tag as hue
     fig, axes = plt.subplots(3, 2, figsize=(15, 12))
     axes = axes.flatten()
@@ -674,7 +674,7 @@ def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_
     sns.boxplot(data=diversity_df, x=feature, y='shannon', ax=axes[0])
     sns.stripplot(data=diversity_df, x=feature, y='shannon', 
               color='black', alpha=0.6, size=4, ax=axes[0])
-    axes[0].set_title(f'Shannon Diversity by Study\n(Taxonomic level: {tax_level_for_diversity})')
+    axes[0].set_title(f'Shannon Diversity by Study\n(Taxonomic level: {tax_level})')
     axes[0].set_ylabel('Shannon Index')
     axes[0].set_xlabel('Study')
 
@@ -682,7 +682,7 @@ def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_
     sns.boxplot(data=diversity_df, x=feature, y='simpson', ax=axes[1])
     sns.stripplot(data=diversity_df, x=feature, y='simpson', 
               color='black', alpha=0.6, size=4, ax=axes[1])
-    axes[1].set_title(f'Simpson Diversity by Study\n(Taxonomic level: {tax_level_for_diversity})')
+    axes[1].set_title(f'Simpson Diversity by Study\n(Taxonomic level: {tax_level})')
     axes[1].set_ylabel('Simpson Index')
     axes[1].set_xlabel('Study')
 
@@ -690,7 +690,7 @@ def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_
     sns.boxplot(data=diversity_df, x=feature, y='observed_otus', ax=axes[2])
     sns.stripplot(data=diversity_df, x=feature, y='observed_otus', 
               color='black', alpha=0.6, size=4, ax=axes[2])
-    axes[2].set_title(f'Observed Taxa by Study\n(Taxonomic level: {tax_level_for_diversity})')
+    axes[2].set_title(f'Observed Taxa by Study\n(Taxonomic level: {tax_level})')
     axes[2].set_ylabel('Number of Observed Taxa')
     axes[2].set_xlabel('Study')
 
@@ -708,42 +708,8 @@ def create_alpha_diversity_plots(diversity_df, diversity_metrics, tax_level_for_
         data=diversity_df, x=feature, y='chao1', 
         color='black', alpha=0.6, size=4, ax=axes[4]
     )
-    axes[4].set_title(f'Chao1 Diversity by Study\n(Taxonomic level: {tax_level_for_diversity})')
+    axes[4].set_title(f'Chao1 Diversity by Study\n(Taxonomic level: {tax_level})')
 
     plt.tight_layout()
     plt.show()
-
-    # Statistical comparison between studies
-    from scipy.stats import mannwhitneyu, kruskal
-
-    logger.info("\n" + "="*60)
-    logger.info("STATISTICAL COMPARISON OF ALPHA DIVERSITY BETWEEN STUDIES")
-    logger.info("="*60)
-
-    studies = diversity_df[feature].unique()
-    if len(studies) == 2:
-        for metric in diversity_metrics:
-            study1_data = diversity_df[diversity_df[feature] == studies[0]][metric]
-            study2_data = diversity_df[diversity_df[feature] == studies[1]][metric]
-        
-            statistic, p_value = mannwhitneyu(study1_data, study2_data, alternative='two-sided')
-        
-            logger.info(f"\n{metric.upper()} - Mann-Whitney U test:")
-            logger.info(f"  {studies[0]} (n={len(study1_data)}): median = {study1_data.median():.3f}")
-            logger.info(f"  {studies[1]} (n={len(study2_data)}): median = {study2_data.median():.3f}")
-            logger.info(f"  U-statistic = {statistic:.3f}, p-value = {p_value:.4f}")
-            logger.info(f"  Significant difference: {'Yes' if p_value < 0.05 else 'No'}")
-
-    elif len(studies) > 2:
-        for metric in diversity_metrics:
-            study_groups = [diversity_df[diversity_df[feature] == study][metric] for study in studies]
-            statistic, p_value = kruskal(*study_groups)
-        
-            logger.info(f"\n{metric.upper()} - Kruskal-Wallis test:")
-            for study in studies:
-                study_data = diversity_df[diversity_df[feature] == study][metric]
-                logger.info(f"  {study} (n={len(study_data)}): median = {study_data.median():.3f}")
-            logger.info(f"  H-statistic = {statistic:.3f}, p-value = {p_value:.4f}")
-            logger.info(f"  Significant difference: {'Yes' if p_value < 0.05 else 'No'}")
-
     return fig

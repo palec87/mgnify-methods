@@ -8,6 +8,9 @@ from typing import Iterable, Tuple
 
 from skbio.diversity.alpha import shannon, simpson, chao1
 
+from mgnify_methods.utils.logging import get_logger
+logger = get_logger(__name__, level="INFO")
+
 
 def extract_sample_stats(metadata, sample):
     try:
@@ -284,3 +287,108 @@ def alpha_diversity_report(df_diversity, factors_df, feature='season'):
     print(f"Calculated diversity for {len(diversity_df)} samples")
     diversity_metrics = ['shannon', 'simpson', 'observed_otus', 'chao1']
     return diversity_df, diversity_results, diversity_metrics
+
+
+def compare_alpha_diversities(diversity_df, diversity_metrics, feature):
+    # Statistical comparison between studies
+    from scipy.stats import mannwhitneyu, kruskal
+
+    logger.info("\n" + "="*60)
+    logger.info("STATISTICAL COMPARISON OF ALPHA DIVERSITY BETWEEN STUDIES")
+    logger.info("="*60)
+
+    studies = diversity_df[feature].unique()
+    results = []
+    if len(studies) == 2:
+
+        s1, s2 = studies
+
+        for metric in diversity_metrics:
+            logger.info(f"\n{metric.upper()} - Mann-Whitney U test")
+            g1 = diversity_df[diversity_df[feature] == s1][metric]
+            g2 = diversity_df[diversity_df[feature] == s2][metric]
+        
+            U, p = mannwhitneyu(g1, g2, alternative='two-sided')
+
+            delta_median = g1.median() - g2.median()
+            rbc = 1 - (2 * U) / (len(g1) * len(g2))
+
+            import itertools
+
+            gt = sum(a > b for a, b in itertools.product(g1, g2))
+            lt = sum(a < b for a, b in itertools.product(g1, g2))
+            cliff_delta = (gt - lt) / (len(g1) * len(g2))
+
+            results.append({
+                'Metric': metric,
+                'median ' + s1: g1.median(),
+                'median ' + s2: g2.median(),
+                'Delta Median': delta_median,
+                'Rank Biserial Correlation': rbc,
+                'CliffDelta': cliff_delta,
+                'U-Statistic': U,
+                'P-Value': p,
+                "direction": f"{s1} > {s2}" if delta_median > 0 else f"{s1} < {s2}" if delta_median < 0 else "no difference"
+            })
+
+        # Convert the entire list of results into a single DataFrame
+        return pd.DataFrame(results)
+
+    elif len(studies) > 2:
+        from statsmodels.stats.multitest import multipletests
+        for metric in diversity_metrics:
+            groups = [
+                diversity_df[diversity_df[feature] == s][metric]
+                for s in studies
+            ]
+            H, p_value = kruskal(*groups)
+
+            N = sum(len(g) for g in groups)
+            k = len(groups)
+
+            epsilon_sq = (H - k + 1) / (N - k)
+
+            logger.info(f"\n{metric.upper()} - Kruskal-Wallis")
+            logger.info(f"H={H:.3f}, p={p_value:.4f}, epsilon²={epsilon_sq:.3f}")
+        
+            pairwise_rows = []
+            pvals = []
+
+            for s1, s2 in itertools.combinations(studies, 2):
+
+                g1 = diversity_df[diversity_df[feature] == s1][metric].dropna()
+                g2 = diversity_df[diversity_df[feature] == s2][metric].dropna()
+
+                U, p_pair = mannwhitneyu(g1, g2, alternative='two-sided')
+
+                delta_median = g1.median() - g2.median()
+                rbc = 1 - (2 * U) / (len(g1) * len(g2))
+
+                gt = sum(a > b for a, b in itertools.product(g1, g2))
+                lt = sum(a < b for a, b in itertools.product(g1, g2))
+                cliff = (gt - lt) / (len(g1) * len(g2))
+
+                pairwise_rows.append({
+                    "Metric": metric,
+                    "Comparison": f"{s1} vs {s2}",
+                    "Test": "Pairwise MW",
+                    "Statistic": U,
+                    "RawP": p_pair,
+                    "DeltaMedian": delta_median,
+                    "RBC": rbc,
+                    "CliffDelta": cliff,
+                    "KW_H": H,
+                    "KW_P": p_value,
+                    "KW_EpsilonSq": epsilon_sq
+                })
+
+                pvals.append(p_pair)
+
+            # Adjust p-values
+            adj = multipletests(pvals, method="holm")[1]
+
+            for row, adj_p in zip(pairwise_rows, adj):
+                row["AdjP"] = adj_p
+                results.append(row)
+
+        return pd.DataFrame(results)
