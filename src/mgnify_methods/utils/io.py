@@ -161,7 +161,7 @@ def assert_taxonomy_integrity(df, analysis_meta):
     # Verify data integrity
     assert len(df[df.index=='sk__Archaea']) == 1, "Missing Archaea row"
     assert len(df[df.index=='sk__Eukaryota']) == 1, "Missing Eukaryota row"
-    assert analysis_meta['relationships.sample.data.id'].size == len(df.columns), "Sample count mismatch"
+    assert analysis_meta['relationships.sample.data.id'].size == len(df.columns), f"Sample count mismatch, "
 
     lst1 = sorted(analysis_meta.index.tolist())
     lst2 = sorted(df.columns.tolist())

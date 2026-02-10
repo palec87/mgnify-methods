@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, Optional, Sequence, Tuple, Iterable, TYPE_CHECKING
 import seaborn as sns
 from matplotlib import pyplot as plt
+from scipy.stats import gaussian_kde
 from mgnify_methods.stats import extract_sample_stats
 from mgnify_methods.metacomp.rarefaction import rarefaction_curve
 # if TYPE_CHECKING:
@@ -52,7 +53,7 @@ def plot_feature_reads_hist(
     **kwargs,
 ) -> Dict[str, Dict[str, Tuple[int, float]]]:
     """
-    Plot histogram of total reads per sample grouped by a specified feature.
+    Plot KDE of total reads per sample grouped by a specified feature.
     
     Parameters
     ----------
@@ -67,7 +68,7 @@ def plot_feature_reads_hist(
     use_robust_save : bool
         Whether to use robust saving with metadata (default: True)
     bins : int
-        Number of bins for histogram (default: 10)
+        Number of x points for KDE (default: 10)
     figsize : tuple
         Figure size (default: (10, 6))
     **kwargs
@@ -100,7 +101,7 @@ def plot_feature_reads_hist(
     # Extract reads metadata per sample
     not_matched = 0
     for sample in analysis_meta.index:
-        logger.info(f'sample is {sample}')
+        # logger.info(f'sample is {sample}')
         try:
             data_id = analysis_meta.at[sample, 'relationships.sample.data.id']
             feature_value = samples_meta[samples_meta['id'] == data_id][feature].values[0]
@@ -111,18 +112,28 @@ def plot_feature_reads_hist(
     
     print(f"Samples not matched to {feature} metadata: {not_matched}")
     
-    # Plot histogram per feature value
+    # Plot KDE per feature value
     fig, ax = plt.subplots(figsize=figsize)
     feature_stats = {}
-    all_totals = [stat[0] for stats in total_dict.values() for _, stat in stats.items()]
-    if isinstance(bins, int) and all_totals:
-        bins = np.histogram_bin_edges(all_totals, bins=bins)
+
+    all_totals = [stat[0] for stats in total_dict.values() for _, stat in stats.items() if stat[0] > 0]
+    if not all_totals:
+        logger.warning("No positive read counts found for KDE plot.")
+        return total_dict
+
+    all_log = np.log10(all_totals)
+    n_points = bins if isinstance(bins, int) else 500
+    xs = np.linspace(all_log.min(), all_log.max(), n_points)
     
     for feature_val, stats in total_dict.items():
         if not stats:  # Skip empty groups
             continue
-        totals = [stat[0] for _, stat in stats.items()]  # stat contains (total, ratio)
-        ax.hist(totals, bins=bins, alpha=0.3, label=feature_val)
+        totals = [stat[0] for _, stat in stats.items() if stat[0] > 0]  # stat contains (total, ratio)
+        if len(totals) < 2:
+            continue
+        x = np.log10(totals)
+        kde = gaussian_kde(x)
+        ax.plot(xs, kde(xs), label=feature_val)
         feature_stats[feature_val] = {
             'n_samples': len(totals),
             'mean_reads': float(np.mean(totals)) if totals else 0,
@@ -132,17 +143,17 @@ def plot_feature_reads_hist(
         }
     
     ax.legend()
-    ax.set_xlabel("Total reads per sample")
-    ax.set_ylabel("Number of samples")
-    ax.set_title(f"Distribution of Total Reads per Sample by {feature.replace('_', ' ').title()}")
+    ax.set_xlabel("Log10 total reads per sample")
+    ax.set_ylabel("Density")
+    ax.set_title(f"KDE of Total Reads per Sample by {feature.replace('_', ' ').title()}")
     
     if use_robust_save:
         # Use new robust saving method
         save_plot_with_metadata(
             fig=fig,
             filename=name.replace('.png', '') if name else f"{feature}_reads_histogram",
-            description=f"Histogram showing distribution of total sequencing reads per sample, grouped by {feature}. Data from MGnify study {globals().get('analysisId', 'unknown')}. Each {feature} value shows different sequencing depth patterns.",
-            plot_type=f"histogram_{feature}",
+            description=f"KDE showing distribution of log10 total sequencing reads per sample, grouped by {feature}. Data from MGnify study {globals().get('analysisId', 'unknown')}. Each {feature} value shows different sequencing depth patterns.",
+            plot_type=f"kde_{feature}",
             data_info={
                 "total_samples": len(analysis_meta),
                 "feature": feature,
