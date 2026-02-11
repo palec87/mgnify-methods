@@ -28,9 +28,9 @@ from mgnify_methods.utils.io import (
     extract_feature,
 )
 # Beta diversity
-from skbio.diversity import beta_diversity
+from scipy.spatial.distance import pdist, squareform
+from skbio import DistanceMatrix
 from skbio.stats.ordination import pcoa
-from mgnify_methods.tables import TaxonomyTable
     
 from momics.taxonomy import (
     rarefy_table,
@@ -40,40 +40,28 @@ from mgnify_methods.utils.logging import get_logger
 logger = get_logger(__name__, level="INFO")
 
 
-def beta_diversity_analysis(taxonomy_table: TaxonomyTable, analysis_meta: pd.DataFrame, samples_meta: pd.DataFrame, config: dict):
+def beta_diversity_analysis(abundance_table: pd.DataFrame, samples_meta: pd.DataFrame, config: dict):
     if not config['diversity']['beta']['enabled']:
         return
     logger.info("\n=== Beta Diversity Analysis ===")
-    
     tax_level = config['taxonomy']['analysis_level']
-    dropna = config['diversity']['alpha']['dropna']
-
     logger.info(f"Analyzing at {tax_level} level...")
     
-    # Prepare data
-    long_df_filt = aggregate_by_taxonomic_level(
-        taxonomy_table.df_filt, level=tax_level, dropna=dropna
-    )
-    df_diversity_pivot = pivot_taxonomic_data(long_df_filt)
-    
-    # Apply rarefaction and prevalence filtering
-    if config['rarefaction']['enabled']:
-        df_diversity_pivot = rarefy_table(df_diversity_pivot, depth=config['rarefaction']['depth'])
-        logger.info(f"Rarefied to depth: {int(config['rarefaction']['depth'])}")
-    
-    df_diversity_pivot = prevalence_cutoff_abund(
-        df_diversity_pivot, 
-        percent=config['diversity']['beta']['prevalence_cutoff'], 
-        skip_columns=0
-    )
-    df_diversity_input = df_diversity_pivot.T
+    df_diversity_input = abundance_table.T
     
     logger.info(f"Data: {df_diversity_input.shape[0]} samples, {df_diversity_input.shape[1]} taxa")
     
     # Calculate beta diversity and PCoA
-    assert sorted(analysis_meta.index) == sorted(df_diversity_input.index), "Index mismatch"
-    
-    beta = beta_diversity(metric=config['diversity']['beta']['metric'], counts=df_diversity_input)
+    assert sorted(samples_meta.index) == sorted(df_diversity_input.index), "Index mismatch"
+    print(config['diversity']['beta']['metric'])
+    dist = squareform(pdist(df_diversity_input.values,
+                            metric=config['diversity']['beta']['metric'],
+                            ),
+                        )
+    beta = DistanceMatrix(
+        dist,
+        ids=df_diversity_input.index.astype(str)
+    )
     pcoa_result = pcoa(beta, method="eigh")
     explained_variance = (
         pcoa_result.proportion_explained[0],
@@ -83,7 +71,7 @@ def beta_diversity_analysis(taxonomy_table: TaxonomyTable, analysis_meta: pd.Dat
     # Merge with metadata
     pcoa_df = pd.merge(
         pcoa_result.samples,
-        analysis_meta,
+        samples_meta,
         left_index=True,
         right_index=True,
         how="inner",
@@ -91,12 +79,6 @@ def beta_diversity_analysis(taxonomy_table: TaxonomyTable, analysis_meta: pd.Dat
     
     # Add feature information
     feature = config['feature']
-    features_dict = extract_feature_dict(analysis_meta, samples_meta, feature=feature)
-    pcoa_df[feature] = 'Unknown'
-    for feature_val, samples in features_dict.items():
-        sample_subset = list(samples.keys())
-        pcoa_df.loc[pcoa_df.index.isin(sample_subset), feature] = feature_val
-    
     logger.info(f"Explained variance: PC1={explained_variance[0]:.2%}, PC2={explained_variance[1]:.2%}")
     
     # Plot PCoA
