@@ -25,7 +25,7 @@ from mgnify_methods.taxonomy import (
 )
 
 from mgnify_methods.utils.io import (
-    extract_feature_to_analysis_meta,
+    extract_feature,
 )
 # Beta diversity
 from skbio.diversity import beta_diversity
@@ -130,7 +130,6 @@ def beta_diversity_analysis(taxonomy_table: TaxonomyTable, analysis_meta: pd.Dat
 
 def alpha_diversity_analysis(
         abundance_table: pd.DataFrame,
-        analysis_meta: pd.DataFrame,
         samples_meta: pd.DataFrame,
         config: dict):
     logger.info("\n=== Alpha Diversity Analysis ===")
@@ -145,13 +144,13 @@ def alpha_diversity_analysis(
     
     # Create factors DataFrame
     factors_df = pd.DataFrame(index=df_diversity_transposed.index)
-    if feature not in analysis_meta.columns:
+    if feature not in samples_meta.columns:
         logger.info(f"Feature '{feature}' not found in analysis metadata. Attempting to extract from sample metadata...")
         # Add season information
-        factors_df = extract_feature_to_analysis_meta(factors_df, feature, samples_meta=samples_meta, analysis_meta=analysis_meta)
+        factors_df = extract_feature(factors_df, feature, samples_meta=samples_meta)
     else:
         factors_df[feature] = factors_df.index.map(
-            lambda x: analysis_meta[analysis_meta.index == x][feature].iloc[0]
+            lambda x: samples_meta[samples_meta.index == x][feature].iloc[0]
         )
 
     logger.info(f"Data: {df_diversity_transposed.shape[0]} samples, {df_diversity_transposed.shape[1]} taxa")

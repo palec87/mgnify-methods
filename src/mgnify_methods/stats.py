@@ -37,18 +37,9 @@ def extract_feature_dict(analysis_meta, samples_meta, feature: str = 'season'):
     if feature not in samples_meta.columns:
         raise KeyError(f"Feature '{feature}' not found in samples metadata columns.")
 
-    for sample in analysis_meta.index:
+    for sample in samples_meta.index:
         try:
-            data_id = analysis_meta.loc[
-                analysis_meta.index == sample,
-                'relationships.sample.data.id'
-            ].values[0]
-
-            feature_value = samples_meta.loc[
-                samples_meta['id'] == data_id,
-                feature
-            ].values[0]
-
+            feature_value = samples_meta.loc[sample, feature]
             total_dict[feature_value][sample] = extract_sample_stats(analysis_meta, sample)
 
         except IndexError:

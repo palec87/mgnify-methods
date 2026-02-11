@@ -61,20 +61,20 @@ def process_analysis_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
 
     # concatenate all metadata dataframes
     analysis_meta = pd.concat(analysis_meta_dfs.values(), ignore_index=True)
-    analysis_meta.set_index('relationships.run.data.id', inplace=True)
+    
     return analysis_meta
 
 
-def filter_analysis_meta(analysis_meta, samples_meta):
-    valid_ids = set(samples_meta['id'].tolist())
-    mask = analysis_meta['relationships.sample.data.id'].isin(valid_ids)
+# def filter_analysis_meta(analysis_meta, samples_meta):
+#     valid_ids = set(samples_meta['id'].tolist())
+#     mask = analysis_meta['relationships.sample.data.id'].isin(valid_ids)
 
-    if not mask.all():
-        bef = analysis_meta.shape[0]
-        analysis_meta = analysis_meta[mask]
-        after = analysis_meta.shape[0]
-        logger.info(f"Dropped {bef - after} samples from analysis_meta: {bef} -> {after}")
-    return analysis_meta
+#     if not mask.all():
+#         bef = analysis_meta.shape[0]
+#         analysis_meta = analysis_meta[mask]
+#         after = analysis_meta.shape[0]
+#         logger.info(f"Dropped {bef - after} samples from analysis_meta: {bef} -> {after}")
+#     return analysis_meta
 
 
 def process_samples_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
@@ -91,6 +91,15 @@ def process_samples_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
 
     # concatenate all metadata dataframes
     samples_meta = pd.concat(samples_meta_dfs.values(), ignore_index=True)
+
+    samples_meta.drop(columns=[
+        'geographic location (latitude)',
+        'geographic location (longitude)',
+        'environment-biome',
+        'environment-feature',
+        'environment-material',
+        ], inplace=True)
+    samples_meta.rename(columns={'id': 'sample_id'}, inplace=True)
     return samples_meta
 
 
@@ -109,11 +118,9 @@ def enhance_samples_metadata(samples_meta: pd.DataFrame) -> pd.DataFrame:
     return samples_meta
 
 
-def extract_feature_to_analysis_meta(factors_df, feature, samples_meta, analysis_meta):
+def extract_feature(factors_df, feature, samples_meta):
     for sample in factors_df.index:
-        sample_meta_row = samples_meta[
-                samples_meta['id'] == analysis_meta.loc[sample, 'relationships.sample.data.id']
-            ]
+        sample_meta_row = samples_meta.loc[sample, :]
         factors_df.loc[sample, feature] = (
                 sample_meta_row[feature].iloc[0] 
                 if not sample_meta_row.empty and feature in sample_meta_row.columns 
@@ -142,12 +149,11 @@ def load_taxonomy_summary(ds, data_folder):
     return df_tax_summary
 
 
-def filter_tax_summary(df, analysis_meta):
-    # Filter taxonomy table to match analysis_meta
+def filter_tax_summary(df, samples_meta):
+    # Filter taxonomy table to match samples_meta
     logger.info(f'\nTaxonomy samples before filtering: {df.shape[1]}')
-    for col in df.columns:
-        if col not in analysis_meta.index:
-            df.drop(columns=[col], inplace=True)
+
+    df = df.loc[:, df.columns.isin(samples_meta.index)]
     logger.info(f'Taxonomy samples after filtering: {df.shape[1]}')
 
     # Remove taxa with all zero counts
@@ -157,13 +163,13 @@ def filter_tax_summary(df, analysis_meta):
     return df
 
 
-def assert_taxonomy_integrity(df, analysis_meta):
+def assert_taxonomy_integrity(df, samples_meta):
     # Verify data integrity
     assert len(df[df.index=='sk__Archaea']) == 1, "Missing Archaea row"
     assert len(df[df.index=='sk__Eukaryota']) == 1, "Missing Eukaryota row"
-    assert analysis_meta['relationships.sample.data.id'].size == len(df.columns), f"Sample count mismatch, "
+    assert len(samples_meta.index) == len(df.columns), f"Sample count mismatch, "
 
-    lst1 = sorted(analysis_meta.index.tolist())
+    lst1 = sorted(samples_meta.index.tolist())
     lst2 = sorted(df.columns.tolist())
     assert lst1 == lst2, "Sample IDs don't match between metadata and taxonomy"
 
@@ -244,17 +250,44 @@ def process_collection_date(metadata: pd.DataFrame) -> pd.DataFrame:
     new_columns.append("month")
 
     # Convert month to month name
-    metadata["month_name"] = metadata["month"].apply(
+    metadata["month name"] = metadata["month"].apply(
         lambda x: (
             datetime.strptime(str(x), "%m").strftime("%B")[:3]
             if x is not None
             else None
         )
     )
-    new_columns.append("month_name")
+    new_columns.append("month name")
     # Extract the day from the 'collection_date' column
     metadata["day"] = metadata["collection_date"].apply(
         lambda x: x.day if x is not None else None
     )
     new_columns.append("day")
     return metadata, new_columns
+
+
+def align_emobon_metadata(metadata):
+    metadata.rename(columns={
+        'collection date': 'collection_date',
+        }, inplace=True)
+    return metadata
+
+
+def add_meta(samples_meta, analysis_meta, cols=None):
+    if cols is None:
+        cols = ['attributes.instrument-platform',
+                'attributes.pipeline-version',
+                'attributes.analysis-summary',
+                'relationships.run.data.id']
+    missing = [c for c in cols if c not in analysis_meta.columns]
+    if missing:
+        raise KeyError(f"Missing columns in analysis_meta: {missing}")
+
+    meta_subset = analysis_meta[cols + ['relationships.sample.data.id']].drop_duplicates()
+    merged = samples_meta.merge(
+        meta_subset,
+        left_on='sample_id',
+        right_on='relationships.sample.data.id',
+        how='left',
+    )
+    return merged

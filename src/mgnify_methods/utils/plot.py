@@ -43,7 +43,6 @@ def plot_rarefaction_mgnify(abund_table, metadata, every_nth=20, ax=None, title=
 
 
 def plot_feature_reads_hist(
-    analysis_meta,
     samples_meta,
     feature='season',
     name=None,
@@ -57,8 +56,6 @@ def plot_feature_reads_hist(
     
     Parameters
     ----------
-    analysis_meta : pd.DataFrame
-        Analysis metadata with 'relationships.sample.data.id' column and sample IDs as index
     samples_meta : pd.DataFrame
         Sample metadata with 'id' column and the feature column to group by
     feature : str
@@ -82,13 +79,13 @@ def plot_feature_reads_hist(
     Examples
     --------
     >>> # Plot by season
-    >>> result = plot_feature_reads_hist(analysis_meta, samples_meta, feature='season')
+    >>> result = plot_feature_reads_hist(samples_meta, feature='season')
     
     >>> # Plot by study tag
-    >>> result = plot_feature_reads_hist(analysis_meta, samples_meta, feature='study_tag')
+    >>> result = plot_feature_reads_hist(samples_meta, feature='study_tag')
     
     >>> # Plot by sample type (prokaryotes vs eukaryotes)
-    >>> result = plot_feature_reads_hist(analysis_meta, samples_meta, feature='sample_type')
+    >>> result = plot_feature_reads_hist(samples_meta, feature='sample_type')
     """
     # Check if feature column exists
     if feature not in samples_meta.columns:
@@ -100,13 +97,12 @@ def plot_feature_reads_hist(
     
     # Extract reads metadata per sample
     not_matched = 0
-    for sample in analysis_meta.index:
+    for sample in samples_meta.index:
         # logger.info(f'sample is {sample}')
         try:
-            data_id = analysis_meta.at[sample, 'relationships.sample.data.id']
-            feature_value = samples_meta[samples_meta['id'] == data_id][feature].values[0]
-            total_dict[str(feature_value)][sample] = extract_sample_stats(analysis_meta, sample)
-        except (IndexError, KeyError):
+            feature_value = samples_meta.loc[sample, feature]
+            total_dict[str(feature_value)][sample] = extract_sample_stats(samples_meta, sample)
+        except (IndexError, KeyError, ValueError):
             not_matched += 1
             continue
     
@@ -155,7 +151,7 @@ def plot_feature_reads_hist(
             description=f"KDE showing distribution of log10 total sequencing reads per sample, grouped by {feature}. Data from MGnify study {globals().get('analysisId', 'unknown')}. Each {feature} value shows different sequencing depth patterns.",
             plot_type=f"kde_{feature}",
             data_info={
-                "total_samples": len(analysis_meta),
+                "total_samples": len(samples_meta),
                 "feature": feature,
                 "feature_values": list(total_dict.keys()),
                 "feature_statistics": feature_stats,
@@ -169,7 +165,6 @@ def plot_feature_reads_hist(
 
 
 def plot_season_reads_hist(
-    analysis_meta,
     samples_meta,
     name=None,
     use_robust_save=True,
@@ -182,8 +177,6 @@ def plot_season_reads_hist(
     
     Parameters
     ----------
-    analysis_meta : pd.DataFrame
-        Analysis metadata
     samples_meta : pd.DataFrame
         Sample metadata with 'season' column
     name : str, optional
@@ -199,7 +192,6 @@ def plot_season_reads_hist(
         Dictionary mapping seasons to dictionaries of {sample: (total_reads, ratio)}
     """
     return plot_feature_reads_hist(
-        analysis_meta=analysis_meta,
         samples_meta=samples_meta,
         feature='season',
         name=name,
@@ -207,7 +199,7 @@ def plot_season_reads_hist(
         **kwargs
     )
 
-def plot_taxonomic_overlap(taxonomy_table: TaxonomyTable, analysis_meta: pd.DataFrame, config):
+def plot_taxonomic_overlap(taxonomy_table: TaxonomyTable, samples_meta: pd.DataFrame, config):
     tax_level = config['taxonomy']['analysis_level']
     _, ax = plt.subplots(figsize=(6, 8))
 
@@ -223,7 +215,7 @@ def plot_taxonomic_overlap(taxonomy_table: TaxonomyTable, analysis_meta: pd.Data
     sets = []
     labels = list(config['datasets'].keys())
     for study in labels:
-        sample_ids = analysis_meta[analysis_meta['study_tag'] == study].index.tolist()
+        sample_ids = samples_meta[samples_meta['study_tag'] == study].index.tolist()
         sample_ids = [s for s in sample_ids if s in df_filt_pivot.columns]
         taxa_in_study = set(df_filt_pivot[sample_ids][df_filt_pivot[sample_ids].sum(axis=1) > 0].index.tolist())
         sets.append(taxa_in_study)
@@ -248,7 +240,7 @@ def plot_taxonomic_overlap(taxonomy_table: TaxonomyTable, analysis_meta: pd.Data
     plt.show()
 
 
-def violin_plot_taxon(comp_tables, analysis_meta, config):
+def violin_plot_taxon(comp_tables, samples_meta, config):
     if not config['plots']['taxa_prevalence_violin']:
         return
     
@@ -267,7 +259,7 @@ def violin_plot_taxon(comp_tables, analysis_meta, config):
     df_all = pd.concat(combined, ignore_index=True)
     df_all.rename(columns={0: 'counts', 'tax': 'taxon'}, inplace=True)
     df_all = df_all.merge(
-        analysis_meta[[feature]],
+        samples_meta[[feature]],
         left_on='index',
         right_index=True,
         how='left'
