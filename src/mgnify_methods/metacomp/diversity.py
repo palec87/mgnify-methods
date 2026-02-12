@@ -52,8 +52,9 @@ def beta_diversity_analysis(abundance_table: pd.DataFrame, samples_meta: pd.Data
     logger.info(f"Data: {df_diversity_input.shape[0]} samples, {df_diversity_input.shape[1]} taxa")
     
     # Calculate beta diversity and PCoA
-    assert sorted(samples_meta.index) == sorted(df_diversity_input.index), "Index mismatch"
-    print(config['diversity']['beta']['metric'])
+    if sorted(samples_meta.index) != sorted(df_diversity_input.index):
+        raise ValueError("Index mismatch between samples_meta and abundance_table")
+    logger.info(f"Metric: {config['diversity']['beta']['metric']}")
     dist = squareform(pdist(df_diversity_input.values,
                             metric=config['diversity']['beta']['metric'],
                             ),
@@ -131,9 +132,8 @@ def alpha_diversity_analysis(
         # Add season information
         factors_df = extract_feature(factors_df, feature, samples_meta=samples_meta)
     else:
-        factors_df[feature] = factors_df.index.map(
-            lambda x: samples_meta[samples_meta.index == x][feature].iloc[0]
-        )
+        factors_df[feature] = samples_meta.reindex(factors_df.index)[feature]
+        factors_df[feature] = factors_df[feature].fillna('Unknown')
 
     logger.info(f"Data: {df_diversity_transposed.shape[0]} samples, {df_diversity_transposed.shape[1]} taxa")
     logger.info(f"Study distribution: {factors_df[feature].value_counts().to_dict()}")
@@ -147,6 +147,7 @@ def alpha_diversity_analysis(
     
     # Save results
     out_dir = Path(config['output']['out_folder'])
+    out_dir.mkdir(parents=True, exist_ok=True)
     try:
         tag = config['output']['alpha_tag']
         diversity_path = out_dir / f"alpha_diversity_{tax_level}_{tag}.csv"

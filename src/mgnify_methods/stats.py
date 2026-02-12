@@ -41,8 +41,7 @@ def extract_feature_dict(analysis_meta, samples_meta, feature: str = 'season'):
         try:
             feature_value = samples_meta.loc[sample, feature]
             total_dict[feature_value][sample] = extract_sample_stats(analysis_meta, sample)
-
-        except IndexError:
+        except (IndexError, KeyError, ValueError):
             not_matched += 1
             continue
 
@@ -80,6 +79,9 @@ def mean_ci_curves(
     counts : np.ndarray
         Number of contributing curves at each x position.
     """
+    if n_points <= 0:
+        raise ValueError("n_points must be positive")
+
     # normalize input to list of (x, y) numpy arrays
     norm = []
     for c in curves:
@@ -186,6 +188,9 @@ def mean_std_curves(
     counts : np.ndarray
         Number of curves contributing (non-NaN) at each x position.
     """
+    if n_points <= 0:
+        raise ValueError("n_points must be positive")
+
     # normalize input to list of (x, y) numpy arrays
     norm = []
     for c in curves:

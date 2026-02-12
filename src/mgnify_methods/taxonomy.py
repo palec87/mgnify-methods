@@ -9,6 +9,9 @@ logger = get_logger(__name__, level="INFO")
 # Taxonomy utilities
 # ---------------------------
 def replace_trailing_empty_with_none(df):
+    if df.empty:
+        return df
+
     empty = (df == "")
     trailing = empty.copy()
     
@@ -55,6 +58,8 @@ def pivot_taxonomic_data(
         first_level_name = df_work.index.names[0] or "sample"
         df_work = df_work.reset_index(level=list(range(df_work.index.nlevels)))
         df_work = df_work.set_index(first_level_name)
+    elif df_work.index.name is None:
+        df_work.index.name = "sample"
 
     has_tax_id = tax_id_col in df_work.columns
     if strict and not has_tax_id:
@@ -242,9 +247,9 @@ def fill_lower_taxa(df: pd.DataFrame, taxonomy_ranks: list) -> pd.DataFrame:
         current = taxonomy_ranks[-i]
 
         df_out[current] = df_out.apply(
-        lambda row: None if (row[current] == '' and pd.isna(row[lower])) else row[current],
-        axis=1
-    )
+            lambda row: None if (row[current] == '' and pd.isna(row[lower])) else row[current],
+            axis=1
+        )
     return df_out
 
 
@@ -270,6 +275,8 @@ def aggregate_by_taxonomic_level(df: pd.DataFrame, level: str, dropna: bool = Tr
     # working = df if not dropna else df.dropna(subset=[level])
     # working = df if not dropna else df.dropna(subset=levels)
     working = df.copy()
+    if working.index.name is None:
+        working.index.name = "sample"
 
     # Group by the specified level and sum abundances across samples (columns)
     grouped = (
@@ -389,6 +396,8 @@ def prevalence_cutoff_abund(
         pd.DataFrame: A filtered DataFrame with low-prevalence features removed.
     """
     out = df.copy()
+    if skip_columns >= df.shape[1]:
+        return out
     max_threshold = 0
     for col in df.iloc[:, skip_columns:]:
         threshold = (percent / 100) * df[col].sum()
@@ -422,6 +431,8 @@ def remove_singletons_per_sample(
         pd.DataFrame: A filtered DataFrame with singletons removed.
     """
     out = df.copy()
+    if skip_columns >= df.shape[1]:
+        return out
     before_shape = df.shape
 
     # For each abundance column, set singletons to zero

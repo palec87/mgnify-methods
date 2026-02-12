@@ -44,6 +44,8 @@ def apply_transform_method(df, config):
     logger.info(f"\n=== Applying transform {method} ===")
     if method == 'clr':
         pseudo_count = transform_params.get('pseudo_count', 1e-9)
+        if pseudo_count <= 0:
+            raise ValueError("pseudo_count must be positive")
         transformed = clr_transform((df + pseudo_count).values)
         return pd.DataFrame(transformed, index=df.index, columns=df.columns)
     else:
@@ -54,6 +56,9 @@ def clr_transform(X):
     """
     Compute the Centered Logratio (CLR) transformation.
     """
+    if X.size == 0:
+        return X
+
     X = np.where(X == 0, 1e-9, X)  # Replace zeros
     gm = np.exp(np.log(X).mean(axis=1, keepdims=True))
     return np.log(X / gm)
@@ -63,7 +68,9 @@ def tss_transform(df):
     """
     Compute the Total Sum Scaling (TSS) transformation.
     """
-    return df.div(df.sum(axis=1), axis=0)
+    denom = df.sum(axis=1)
+    denom = denom.replace({0: np.nan})
+    return df.div(denom, axis=0).fillna(0)
 
 
 def tss_sqrt_transform(df):

@@ -14,9 +14,11 @@ from momics.metadata import (
 from mgnify_methods.utils.logging import get_logger
 logger = get_logger(__name__, level="INFO")
 
+
 def fetch_analysis_metadata(folder, analysisId):
+    cache_path = Path(folder) / f"{analysisId}_analysis_meta.csv"
     try:
-        analysis_meta = pd.read_csv(f'{folder}/{analysisId}_analysis_meta.csv').reset_index(drop=True)
+        analysis_meta = pd.read_csv(cache_path).reset_index(drop=True)
     except FileNotFoundError:
         logger.info(f"Metadata file not found: Downloading...")
 
@@ -24,17 +26,18 @@ def fetch_analysis_metadata(folder, analysisId):
             analysis_meta = map(lambda r: r.json, session.iterate(f'studies/{analysisId}/analyses'))
             analysis_meta = pd.json_normalize(analysis_meta)
 
-        analysis_meta.to_csv(f'{folder}/{analysisId}_analysis_meta.csv', index=False)
+        analysis_meta.to_csv(cache_path, index=False)
     return analysis_meta
 
 
 def fetch_samples_metadata(folder, analysisId):
+    cache_path = Path(folder) / f"{analysisId}_samples_meta.csv"
     try:
-        samples_meta = pd.read_csv(f'{folder}/{analysisId}_samples_meta.csv').reset_index(drop=True)
+        samples_meta = pd.read_csv(cache_path).reset_index(drop=True)
     except FileNotFoundError:
         logger.info(f"Samples metadata file not found: Downloading...")
         samples_meta = get_mgnify_metadata(analysisId)
-        samples_meta.to_csv(f'{folder}/{analysisId}_samples_meta.csv', index=False)
+        samples_meta.to_csv(cache_path, index=False)
     return samples_meta
 
 
@@ -65,18 +68,6 @@ def process_analysis_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
     return analysis_meta
 
 
-# def filter_analysis_meta(analysis_meta, samples_meta):
-#     valid_ids = set(samples_meta['id'].tolist())
-#     mask = analysis_meta['relationships.sample.data.id'].isin(valid_ids)
-
-#     if not mask.all():
-#         bef = analysis_meta.shape[0]
-#         analysis_meta = analysis_meta[mask]
-#         after = analysis_meta.shape[0]
-#         logger.info(f"Dropped {bef - after} samples from analysis_meta: {bef} -> {after}")
-#     return analysis_meta
-
-
 def process_samples_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
     samples_meta_dfs = {}
     for k, values in ds_dict.items():
@@ -92,24 +83,31 @@ def process_samples_metadata(cache_folder: str, ds_dict: dict) -> pd.DataFrame:
     # concatenate all metadata dataframes
     samples_meta = pd.concat(samples_meta_dfs.values(), ignore_index=True)
 
-    samples_meta.drop(columns=[
-        'geographic location (latitude)',
-        'geographic location (longitude)',
-        'environment-biome',
-        'environment-feature',
-        'environment-material',
-        ], inplace=True)
-    samples_meta.rename(columns={'id': 'sample_id'}, inplace=True)
+    samples_meta = samples_meta.drop(
+        columns=[
+            'geographic location (latitude)',
+            'geographic location (longitude)',
+            'environment-biome',
+            'environment-feature',
+            'environment-material',
+        ],
+        errors='ignore',
+    )
+    if 'id' in samples_meta.columns and 'sample_id' not in samples_meta.columns:
+        samples_meta = samples_meta.rename(columns={'id': 'sample_id'})
     return samples_meta
 
 
 def enhance_samples_metadata(samples_meta: pd.DataFrame) -> pd.DataFrame:
     # enhance metadata
+    samples_meta = samples_meta.copy()
     samples_meta.rename(columns={'collection date': 'collection_date'}, inplace=True)
     samples_meta, _ = process_collection_date(samples_meta)
     samples_meta, _ = extract_season(samples_meta)
 
-    samples_meta['sample_type'] = samples_meta['sample-name'].apply(lambda x: 'euk' if 'Euk' in x else 'prok')
+    samples_meta['sample_type'] = samples_meta['sample-name'].apply(
+        lambda x: 'euk' if isinstance(x, str) and 'Euk' in x else 'prok'
+    )
 
     bef = samples_meta.shape[0]
     samples_meta = samples_meta[samples_meta['sample_type'].isin(['prok'])].reset_index(drop=True)
@@ -120,12 +118,16 @@ def enhance_samples_metadata(samples_meta: pd.DataFrame) -> pd.DataFrame:
 
 def extract_feature(factors_df, feature, samples_meta):
     for sample in factors_df.index:
+        if sample not in samples_meta.index:
+            factors_df.loc[sample, feature] = 'Unknown'
+            continue
+
         sample_meta_row = samples_meta.loc[sample, :]
-        factors_df.loc[sample, feature] = (
-                sample_meta_row[feature].iloc[0] 
-                if not sample_meta_row.empty and feature in sample_meta_row.columns 
-                else 'Unknown'
-            )
+        if isinstance(sample_meta_row, pd.Series):
+            value = sample_meta_row.get(feature, 'Unknown')
+        else:
+            value = sample_meta_row[feature].iloc[0] if feature in sample_meta_row.columns else 'Unknown'
+        factors_df.loc[sample, feature] = value
         
     return factors_df
 
@@ -267,9 +269,10 @@ def process_collection_date(metadata: pd.DataFrame) -> pd.DataFrame:
 
 
 def align_emobon_metadata(metadata):
+    metadata = metadata.copy()
     metadata.rename(columns={
         'collection date': 'collection_date',
-        }, inplace=True)
+    }, inplace=True)
     return metadata
 
 
@@ -290,4 +293,30 @@ def add_meta(samples_meta, analysis_meta, cols=None):
         right_on='relationships.sample.data.id',
         how='left',
     )
+    return merged.drop(columns=['relationships.sample.data.id'])
+
+
+def merge_metadata_by_index(
+    left: pd.DataFrame,
+    right: pd.DataFrame,
+    prefer: str = "left",
+    combine_duplicates: bool = True,
+) -> pd.DataFrame:
+    """Merge two metadata tables by index, combining columns with the same name.
+
+    This is effectively a row-wise concatenation with shared columns merged.
+    """
+    if prefer not in {"left", "right"}:
+        raise ValueError("prefer must be 'left' or 'right'")
+
+    merged = pd.concat([left, right], axis=0, sort=False)
+
+    if combine_duplicates and merged.index.has_duplicates:
+        if prefer == "left":
+            merged = merged.groupby(level=0, sort=False).apply(lambda g: g.ffill().bfill().iloc[0])
+        else:
+            merged = merged.groupby(level=0, sort=False).apply(lambda g: g.bfill().ffill().iloc[0])
+        if isinstance(merged.index, pd.MultiIndex):
+            merged.index = merged.index.droplevel(1)
+
     return merged
