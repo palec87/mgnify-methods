@@ -27,13 +27,18 @@ logger = get_logger(__name__, level="INFO")
 
 def plot_rarefaction_mgnify(abund_table, metadata, every_nth=20, ax=None, title="Rarefaction curves per sample"):
     if ax is None:
-        fig, ax = plt.subplots()
+        _, ax = plt.subplots()
     for sample in abund_table.columns[::every_nth]:
-        _, ratio = extract_sample_stats(metadata, sample)
         reads = np.repeat(abund_table.index, abund_table[sample].values)
         depths, richness = rarefaction_curve(reads)
-
-        ax.plot(depths, richness, label=f'{sample} (unidentified ratio: {ratio:.2f})')
+        try:
+            ratio = (
+                metadata.loc[sample, 'ssu_identified'] +
+                metadata.loc[sample, 'lsu_identified']
+                ) / metadata.loc[sample, 'total_seqs']
+        except:
+            ratio = 0.0
+        ax.plot(depths, richness, label=f'{sample} (Identified ratio: {ratio:.2f})')
 
     ax.legend()
     ax.set_xlabel("Number of reads")
@@ -91,51 +96,37 @@ def plot_feature_reads_hist(
     if feature not in samples_meta.columns:
         raise ValueError(f"Feature '{feature}' not found in samples_meta columns: {list(samples_meta.columns)}")
     
-    # Get unique feature values dynamically
-    feature_values = samples_meta[feature].dropna().unique()
-    total_dict = {str(val): {} for val in feature_values}
-    
-    # Extract reads metadata per sample
-    not_matched = 0
-    for sample in samples_meta.index:
-        # logger.info(f'sample is {sample}')
-        try:
-            feature_value = samples_meta.loc[sample, feature]
-            total_dict[str(feature_value)][sample] = extract_sample_stats(samples_meta, sample)
-        except (IndexError, KeyError, ValueError):
-            not_matched += 1
-            continue
-    
-    print(f"Samples not matched to {feature} metadata: {not_matched}")
-    
     # Plot KDE per feature value
     fig, ax = plt.subplots(figsize=figsize)
     feature_stats = {}
 
-    all_totals = [stat[0] for stats in total_dict.values() for _, stat in stats.items() if stat[0] > 0]
-    if not all_totals:
-        logger.warning("No positive read counts found for KDE plot.")
-        return total_dict
-
-    all_log = np.log10(all_totals)
+    tmp_meta = samples_meta.copy()
+    tmp_meta['total_seq_log10'] = np.log10(tmp_meta['total_seq_submitted'])
+    tmp_meta.dropna(subset=['total_seq_log10'], inplace=True)
+    all_totals = (
+        tmp_meta
+        .groupby(feature)[['total_seq_submitted', 'total_seq_log10']]
+        .agg(list)
+        .to_dict()
+    )
     n_points = bins if isinstance(bins, int) else 500
-    xs = np.linspace(all_log.min(), all_log.max(), n_points)
+    xs = np.linspace(tmp_meta['total_seq_log10'].min(), 1.2*tmp_meta['total_seq_log10'].max(), n_points)
     
-    for feature_val, stats in total_dict.items():
-        if not stats:  # Skip empty groups
+    # iterate to plot
+    for feature_val, log_read_nums in all_totals['total_seq_log10'].items():
+        if len(log_read_nums) < 2:
             continue
-        totals = [stat[0] for _, stat in stats.items() if stat[0] > 0]  # stat contains (total, ratio)
-        if len(totals) < 2:
-            continue
-        x = np.log10(totals)
-        kde = gaussian_kde(x)
+        kde = gaussian_kde(log_read_nums)
         ax.plot(xs, kde(xs), label=feature_val)
+
+    # iterate to get stats
+    for feature_val, read_nums in all_totals['total_seq_submitted'].items():
         feature_stats[feature_val] = {
-            'n_samples': len(totals),
-            'mean_reads': float(np.mean(totals)) if totals else 0,
-            'std_reads': float(np.std(totals)) if totals else 0,
-            'min_reads': int(np.min(totals)) if totals else 0,
-            'max_reads': int(np.max(totals)) if totals else 0
+            'n_samples': len(read_nums),
+            'mean_reads': float(np.mean(read_nums)) if read_nums else 0,
+            'std_reads': float(np.std(read_nums)) if read_nums else 0,
+            'min_reads': int(np.min(read_nums)) if read_nums else 0,
+            'max_reads': int(np.max(read_nums)) if read_nums else 0
         }
     
     ax.legend()
@@ -153,7 +144,7 @@ def plot_feature_reads_hist(
             data_info={
                 "total_samples": len(samples_meta),
                 "feature": feature,
-                "feature_values": list(total_dict.keys()),
+                "feature_values": list(all_totals['total_seq_log10'].keys()),
                 "feature_statistics": feature_stats,
                 "study_id": globals().get('analysisId', 'unknown')
             },
@@ -161,7 +152,7 @@ def plot_feature_reads_hist(
         )
     
     plt.show()
-    return total_dict
+    return feature_stats
 
 
 def plot_season_reads_hist(

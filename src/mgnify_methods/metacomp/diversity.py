@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Iterable, Tuple, List, Dict
 import pandas as pd
 try:
     from IPython.display import display
@@ -13,15 +13,8 @@ from mgnify_methods.utils.plot import (
 )
 
 from mgnify_methods.stats import (
-    extract_feature_dict,
     alpha_diversity_report,
     compare_alpha_diversities,
-)
-from mgnify_methods.taxonomy import (
-    aggregate_by_taxonomic_level,
-    pivot_taxonomic_data,
-    prevalence_cutoff_abund,
-    remove_singletons_per_sample,
 )
 
 from mgnify_methods.utils.io import (
@@ -31,6 +24,7 @@ from mgnify_methods.utils.io import (
 from scipy.spatial.distance import pdist, squareform
 from skbio import DistanceMatrix
 from skbio.stats.ordination import pcoa
+from skbio.stats.distance import permanova
     
 from momics.taxonomy import (
     rarefy_table,
@@ -181,3 +175,80 @@ def alpha_diversity_analysis(
         print(stats_df)
 
     return summary_df, diversity_df, stats_df
+
+
+def run_permanova(
+    data: pd.DataFrame,
+    metadata: pd.DataFrame,
+    permanova_factor: str,
+    permanova_group: List[str],
+    permanova_additional_factors: List[str],
+    metric: str = 'euclidean',
+    permutations: int = 999,
+    verbose: bool = False,
+) -> Dict[str, pd.DataFrame]:
+    """
+    Run PERMANOVA on the given data and metadata.
+    Args:
+        data (pd.DataFrame): DataFrame containing the abundance data.
+        metadata (pd.DataFrame): DataFrame containing the metadata.
+        permanova_factor (str): The factor to use for PERMANOVA.
+        permanova_group (List[str]): List of groups to include in the analysis.
+        permanova_additional_factors (List[str]): Additional factors to test.
+        permutations (int): Number of permutations for PERMANOVA. Default is 999.
+        verbose (bool): If True, print detailed output.
+    Returns:
+        Dict[str, pd.DataFrame]: Dictionary containing PERMANOVA results for each factor.
+    """
+    # Filter metadata based on selected groups
+    if permanova_factor == "All":
+        filtered_metadata = metadata.copy()
+    else:
+        filtered_metadata = metadata[metadata[permanova_factor].isin(permanova_group)]
+
+    # Match data and metadata samples
+    abundance_matrix = data[filtered_metadata.index].T
+
+    permanova_results = {}
+    # factors_to_test = permanova_additional_factors
+    for remaining_factor in permanova_additional_factors:
+        factor_metadata = filtered_metadata.dropna(subset=[remaining_factor])
+        combined_abundance = abundance_matrix.loc[factor_metadata.index]
+
+        dist = squareform(pdist(combined_abundance.values,
+                            metric=metric,
+                            ),
+                        )
+        distance_matrix_obj = DistanceMatrix(
+            dist,
+            ids=combined_abundance.index
+        )
+
+        factor_metadata = factor_metadata.loc[
+            factor_metadata.index.intersection(distance_matrix_obj.ids)
+        ]
+
+        if remaining_factor not in factor_metadata.columns:
+            continue
+
+        group_vector = factor_metadata[remaining_factor]
+        if group_vector.nunique() < len(group_vector):
+            if set(distance_matrix_obj.ids) == set(group_vector.index):
+                permanova_result = permanova(
+                    distance_matrix_obj,
+                    grouping=group_vector,
+                    permutations=permutations,
+                )
+                permanova_results[remaining_factor] = permanova_result
+                if verbose:
+                    logger.info(f"Factor: {remaining_factor}")
+                    logger.info(
+                        f"  F-statistic: {permanova_result['test statistic']:.4f}"
+                    )
+                    logger.info(f"  p-value: {permanova_result['p-value']:.4f}\n")
+        else:
+            logger.info(
+                f"Skipping factor '{remaining_factor}' due to unique values in grouping vector."
+            )
+
+    return permanova_results

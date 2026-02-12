@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import t as _t_dist
 from collections import defaultdict
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, List, Dict
 
 from skbio.diversity.alpha import shannon, simpson, chao1
 
@@ -20,11 +20,24 @@ def extract_sample_stats(metadata, sample):
     except AttributeError:
         lst = metadata[metadata.index==sample]['attributes.analysis-summary'].values[0]
     df_tmp = pd.DataFrame(lst)
-    total = int(df_tmp[df_tmp['key']=='Submitted nucleotide sequences']['value'].values[0])
-    identified = (int(df_tmp[df_tmp['key']=='Predicted SSU sequences']['value'].values[0]) + 
-                    int(df_tmp[df_tmp['key']=='Predicted LSU sequences']['value'].values[0]))
-    ratio = (total - identified) / total
-    return total, ratio
+    try:
+        total_seqs = int(df_tmp.query("key == 'Submitted nucleotide sequences'")['value'].values[0])
+    except:
+        total_seqs = np.nan
+    
+    try:
+        ssu = int(df_tmp.query("key == 'Predicted SSU sequences'")['value'].values[0])
+    except:
+        ssu = np.nan
+    try:
+        lsu = int(df_tmp.query("key == 'Predicted LSU sequences'")['value'].values[0])
+    except:
+        lsu = np.nan
+
+    metadata.loc[sample, 'total_seq_submitted'] = total_seqs
+    metadata.loc[sample, 'ssu_identified'] = ssu
+    metadata.loc[sample, 'lsu_identified'] = lsu
+    return metadata
 
 
 def extract_feature_dict(analysis_meta, samples_meta, feature: str = 'season'):

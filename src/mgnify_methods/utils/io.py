@@ -6,6 +6,7 @@ import json
 from typing import Any, Dict
 from jsonapi_client import Session as APISession
 from .api import get_mgnify_metadata
+from mgnify_methods.stats import extract_sample_stats
 
 from momics.metadata import (
     extract_season,
@@ -153,16 +154,19 @@ def load_taxonomy_summary(ds, data_folder):
 
 def filter_tax_summary(df, samples_meta):
     # Filter taxonomy table to match samples_meta
-    logger.info(f'\nTaxonomy samples before filtering: {df.shape[1]}')
+    logger.info(f'\nBefore filtering: Taxonomy: {df.shape[1]}, metadata: {samples_meta.shape[0]}')
 
     df = df.loc[:, df.columns.isin(samples_meta.index)]
     logger.info(f'Taxonomy samples after filtering: {df.shape[1]}')
+
+    samples_meta = samples_meta.loc[df.columns]
+    logger.info(f'Metadata samples after filtering: {samples_meta.shape[0]}')
 
     # Remove taxa with all zero counts
     zero_rows = df[(df == 0).all(axis=1)]
     logger.info(f"\nRemoving {zero_rows.shape[0]} taxa with all zero counts")
     df = df.loc[~(df == 0).all(axis=1)]
-    return df
+    return df, samples_meta
 
 
 def assert_taxonomy_integrity(df, samples_meta):
@@ -178,13 +182,18 @@ def assert_taxonomy_integrity(df, samples_meta):
     logger.info("\n✓ Data tables synchronized successfully")
 
 
-def filter_number_reads(sample_total_dict,cutoff):
-    to_drop = []
-    for _, v in sample_total_dict.items():
-        for sample, (total, _) in v.items():
-            if total > cutoff:
-                continue
-            to_drop.append(sample)
+# def filter_number_reads(sample_total_dict,cutoff):
+#     to_drop = []
+#     for _, v in sample_total_dict.items():
+#         for sample, (total, _) in v.items():
+#             if total > cutoff:
+#                 continue
+#             to_drop.append(sample)
+#     logger.info(f"Dropping {len(to_drop)} samples with less than {cutoff} reads: {to_drop}")
+#     return to_drop
+
+def filter_number_reads(df: pd.DataFrame, cutoff):
+    to_drop = df[df['total_seq_submitted'] <= cutoff].index.tolist()
     logger.info(f"Dropping {len(to_drop)} samples with less than {cutoff} reads: {to_drop}")
     return to_drop
 
