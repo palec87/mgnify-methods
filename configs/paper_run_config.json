@@ -1,0 +1,121 @@
+{
+  "datasets": {
+    "OSD2018": [
+      "MGYS00006608",
+      "mgnify_data/ERP124424_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "OSD2019": [
+      "MGYS00006607",
+      "mgnify_data/ERP124431_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "Sola": [
+      "MGYS00006680",
+      "mgnify_data/SRP237882_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "Biscay": [
+      "MGYS00006682",
+      "mgnify_data/SRP334933_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "Baltic": [
+      "MGYS00006678",
+      "mgnify_data/ERP140185_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "BBMO": [
+      "MGYS00006675",
+      "mgnify_data/ERP122219_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "Svalbard": [
+      "MGYS00003725",
+      "mgnify_data/ERP106348_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "Helgoland": [
+      "MGYS00006686",
+      "mgnify_data/ERP144826_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "Fram": [
+      "MGYS00006714",
+      "mgnify_data/ERP151329_taxonomy_abundances_SSU_v5.0.tsv"
+    ]
+  },
+  "output": {
+    "use_timestamp": true,
+    "cache_dir": "notebooks/analysis_cache"
+  },
+  "filtering": {
+    "min_reads_cutoff": 25000
+  },
+  "taxonomy": {
+    "ranks": [
+      "superkingdom",
+      "kingdom",
+      "phylum",
+      "class",
+      "order",
+      "family",
+      "genus",
+      "species"
+    ],
+    "analysis_level": "phylum"
+  },
+  "samples": {
+    "sample_type": "prok"
+  },
+  "loading": true,
+  "preprocess": {
+    "enabled": false,
+    "method": "rarefaction",
+    "method_params": {
+      "rarefaction": {
+        "depth": null,
+        "n_points": 50
+      }
+    }
+  },
+  "transform": {
+    "enabled": true,
+    "method": "clr",
+    "params": {
+      "pseudo_count": 1e-09
+    },
+    "method_params": {
+      "alr": {
+        "reference_feature": "taxon_1"
+      },
+      "ilr": {
+        "basis": "sbp"
+      },
+      "plr": {
+        "lambda": 0.5
+      }
+    }
+  },
+  "diversity": {
+    "alpha": {
+      "enabled": true,
+      "dropna": false,
+      "remove_singletons": false,
+      "rarefy": false
+    },
+    "beta": {
+      "enabled": true,
+      "metric": "euclidean",
+      "remove_singletons": true,
+      "prevalence_cutoff": 0.5
+    }
+  },
+  "feature": "study_tag",
+  "plots": {
+    "reads_histogram": false,
+    "taxonomic_overlap_venn": true,
+    "rarefaction_curves": true,
+    "rarefaction_mean_std": true,
+    "rarefaction_mean_ci": true,
+    "rarefaction_individual": false,
+    "alpha_diversity": true,
+    "beta_diversity_pcoa": true,
+    "taxa_prevalence_violin": true,
+    "feature_rarefaction": true,
+    "save_figures": true,
+    "dpi": 300
+  }
+}

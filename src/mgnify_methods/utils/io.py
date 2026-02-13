@@ -6,7 +6,6 @@ import json
 from typing import Any, Dict
 from jsonapi_client import Session as APISession
 from .api import get_mgnify_metadata
-from mgnify_methods.stats import extract_sample_stats
 
 from momics.metadata import (
     extract_season,
@@ -14,6 +13,24 @@ from momics.metadata import (
 
 from mgnify_methods.utils.logging import get_logger
 logger = get_logger(__name__, level="INFO")
+
+
+def save_df(df: pd.DataFrame, out_dir: Path, filename: str, feature, tag=None):
+    if tag:
+        out_path = out_dir / f"{filename}_{feature}_{tag}.csv"
+    else:
+        out_path = out_dir / f"{filename}_{feature}.csv"
+    df.to_csv(out_path, index=False)
+    logger.info(f"Saved {filename} to: {out_path}")
+
+
+def save_plot(fig, out_dir: Path, filename: str, feature, tag=None):
+    if tag:
+        out_path = out_dir / f"{filename}_{feature}_{tag}.png"
+    else:
+        out_path = out_dir / f"{filename}_{feature}.png"
+    fig.savefig(out_path, dpi=300, bbox_inches='tight')
+    logger.info(f"Saved plot {filename} to: {out_path}")
 
 
 def fetch_analysis_metadata(folder, analysisId):

@@ -40,6 +40,50 @@ def extract_sample_stats(metadata, sample):
     return metadata
 
 
+def extract_sample_stats_bulk(metadata: pd.DataFrame) -> pd.DataFrame:
+    if 'attributes.analysis-summary' not in metadata.columns:
+        raise KeyError("Missing 'attributes.analysis-summary' column in metadata")
+
+    def parse_summary(value):
+        if isinstance(value, str):
+            s_clean = value.strip()
+            if s_clean.endswith(')"'):
+                s_clean = s_clean.rstrip(')"')
+            try:
+                value = ast.literal_eval(s_clean)
+            except (ValueError, SyntaxError):
+                return None
+        return value
+
+    def safe_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return np.nan
+
+    def summary_to_stats(summary):
+        if not summary:
+            return (np.nan, np.nan, np.nan)
+        summary_map = {
+            item.get('key'): item.get('value')
+            for item in summary
+            if isinstance(item, dict)
+        }
+        total_seqs = safe_int(summary_map.get('Submitted nucleotide sequences'))
+        ssu = safe_int(summary_map.get('Predicted SSU sequences'))
+        lsu = safe_int(summary_map.get('Predicted LSU sequences'))
+        return (total_seqs, ssu, lsu)
+
+    summaries = metadata['attributes.analysis-summary'].apply(parse_summary)
+    stats = summaries.apply(summary_to_stats)
+    stats_df = pd.DataFrame(
+        stats.tolist(),
+        index=metadata.index,
+        columns=['total_seq_submitted', 'ssu_identified', 'lsu_identified'],
+    )
+    return metadata.join(stats_df)
+
+
 def extract_feature_dict(analysis_meta, samples_meta, feature: str = 'season'):
     """
     Compute total reads per sample grouped by season.

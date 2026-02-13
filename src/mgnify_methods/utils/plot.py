@@ -25,6 +25,35 @@ from mgnify_methods.utils.logging import get_logger
 logger = get_logger(__name__, level="INFO")
 
 
+def plot_beta(pcoa_df, explained_variance, config):
+    feature = config['feature']
+    _, ax = plt.subplots(figsize=(12, 8))
+    
+    sns.scatterplot(
+        data=pcoa_df,
+        x='PC1', y='PC2',
+        hue=feature,
+        style='study_tag',
+        s=100,
+        alpha=0.7,
+        ax=ax
+    )
+    
+    ax.set_xlabel(f'PC1 ({explained_variance[0]:.2%} explained variance)')
+    ax.set_ylabel(f'PC2 ({explained_variance[1]:.2%} explained variance)')
+    ax.set_title(f'PCoA - {feature.capitalize()} (color) vs Study (style)')
+    ax.grid(True, alpha=0.3)
+    
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    
+    if config['plots']['save_figures']:
+        out_dir = Path(config['output']['out_folder'])
+        plt.savefig(out_dir / f"beta_pcoa_{feature}.png", 
+            dpi=config['plots']['dpi'], bbox_inches='tight')
+    plt.show()
+
+
 def plot_rarefaction_mgnify(abund_table, metadata, every_nth=20, ax=None, title="Rarefaction curves per sample"):
     if ax is None:
         _, ax = plt.subplots()

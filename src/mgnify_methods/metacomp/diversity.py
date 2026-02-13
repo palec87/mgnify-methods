@@ -1,17 +1,13 @@
 from pathlib import Path
 from typing import Iterable, Tuple, List, Dict
 import pandas as pd
-try:
-    from IPython.display import display
-except ImportError:  # Fallback for non-notebook environments.
-    display = None
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 from mgnify_methods.utils.plot import (
     create_alpha_diversity_plots,
+    plot_beta,
 )
-
 from mgnify_methods.stats import (
     alpha_diversity_report,
     compare_alpha_diversities,
@@ -19,6 +15,8 @@ from mgnify_methods.stats import (
 
 from mgnify_methods.utils.io import (
     extract_feature,
+    save_plot,
+    save_df,
 )
 # Beta diversity
 from scipy.spatial.distance import pdist, squareform
@@ -73,36 +71,11 @@ def beta_diversity_analysis(abundance_table: pd.DataFrame, samples_meta: pd.Data
     )
     
     # Add feature information
-    feature = config['feature']
     logger.info(f"Explained variance: PC1={explained_variance[0]:.2%}, PC2={explained_variance[1]:.2%}")
     
     # Plot PCoA
     if config['plots']['beta_diversity_pcoa']:
-        _, ax = plt.subplots(figsize=(12, 8))
-        
-        sns.scatterplot(
-            data=pcoa_df,
-            x='PC1', y='PC2',
-            hue=feature,
-            style='study_tag',
-            s=100,
-            alpha=0.7,
-            ax=ax
-        )
-        
-        ax.set_xlabel(f'PC1 ({explained_variance[0]:.2%} explained variance)')
-        ax.set_ylabel(f'PC2 ({explained_variance[1]:.2%} explained variance)')
-        ax.set_title(f'PCoA - {feature.capitalize()} (color) vs Study (style)')
-        ax.grid(True, alpha=0.3)
-        
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.tight_layout()
-        
-        if config['plots']['save_figures']:
-            out_dir = Path(config['output']['out_folder'])
-            plt.savefig(out_dir / f"beta_pcoa_{feature}.png", 
-                dpi=config['plots']['dpi'], bbox_inches='tight')
-        plt.show()
+        plot_beta(pcoa_df, explained_variance, config)
 
 
 def alpha_diversity_analysis(
@@ -114,7 +87,6 @@ def alpha_diversity_analysis(
     feature = config['feature']
     logger.info(f"Analyzing at {tax_level} level...")
 
-    
     # Transpose for diversity calculation
     df_diversity_transposed = abundance_table.T
     df_diversity_transposed.index.name = 'sample_id'
@@ -139,40 +111,25 @@ def alpha_diversity_analysis(
         feature=feature,
     )
     
-    # Save results
+    # setup saving
     out_dir = Path(config['output']['out_folder'])
     out_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        tag = config['output']['alpha_tag']
-        diversity_path = out_dir / f"alpha_diversity_{tax_level}_{tag}.csv"
-    except KeyError:
-        diversity_path = out_dir / f"alpha_diversity_{tax_level}.csv"
-
-    diversity_df.to_csv(diversity_path, index=False)
-    logger.info(f"\nSaved diversity results to: {diversity_path}")
-    
-    # Display summary
-    summary_df = diversity_df.groupby(feature)[diversity_metrics].describe().round(3)
-    if display is not None:
-        display(summary_df)
-    else:
-        print(summary_df)
     
     # Plot diversity
     if config['plots']['alpha_diversity']:
         fig_alpha = create_alpha_diversity_plots(diversity_df, tax_level, feature)
         if config['plots']['save_figures']:
-            fig_alpha.savefig(
-                out_dir / f"alpha_diversity_{tax_level}.png",
-                dpi=config['plots']['dpi'], bbox_inches='tight'
-            )
+            save_plot(fig_alpha, out_dir, "alpha_diversity", feature, tag=config['output'].get('alpha_tag'))
         plt.show()
 
+    # Summary DFs
+    summary_df = diversity_df.groupby(feature)[diversity_metrics].describe().round(3)
     stats_df = compare_alpha_diversities(diversity_df, diversity_metrics, feature)
-    if display is not None:
-        display(stats_df)
-    else:
-        print(stats_df)
+
+    # save DFs
+    save_df(summary_df, out_dir, "alpha_diversity_summary", feature, tag=config['output'].get('alpha_tag'))
+    save_df(diversity_df, out_dir, "alpha_diversity", feature, tag=config['output'].get('alpha_tag'))
+    save_df(stats_df, out_dir, "alpha_diversity_stats", feature, tag=config['output'].get('alpha_tag'))
 
     return summary_df, diversity_df, stats_df
 
