@@ -235,7 +235,19 @@ def run_deseq2(
 
     dds.deseq2()
 
-    stats = DeseqStats(dds, contrast=f"{design_factor}")
+    # Get unique levels of the design factor from metadata
+    factor_levels = sorted(metadata[design_factor].unique())
+    logger.info(f"Factor levels: {factor_levels}")
+    
+    # Use first two levels as contrast (baseline vs. group to compare)
+    if len(factor_levels) < 2:
+        raise ValueError(f"Design factor '{design_factor}' has less than 2 levels for contrast")
+    
+    baseline = factor_levels[0]
+    group_to_compare = factor_levels[1]
+    
+    logger.info(f"Computing contrast: {group_to_compare} vs {baseline}")
+    stats = DeseqStats(dds, contrast=(design_factor, group_to_compare, baseline))
     stats.summary()
 
     res = stats.results_df.copy()
