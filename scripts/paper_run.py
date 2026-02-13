@@ -140,5 +140,5 @@ if CONFIG['differential_abundance']['enabled']:
     out_path = Path(CONFIG['output']['out_folder'])
     out_path.mkdir(parents=True, exist_ok=True)
     with open(out_path / "refseq_result.pkl", "wb") as f:
-        pkl.dump(deseq_results.to_picklable_anndata(), f)
+        pkl.dump(deseq_results, f)
     
