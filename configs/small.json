@@ -41,7 +41,7 @@
     "sample_type": "prok"
   },
   "precompute": {
-    "loading": false,
+    "loading": true,
     "saving": true,
     "tag": "small"
   },
@@ -93,9 +93,10 @@
     "params": {
       "deseq2": {
         "design_factor": "study_tag",
-        "min_counts": 10,
+        "min_counts": 1000,
         "padj": 0.05,
-        "lfc": null
+        "lfc": null,
+        "n_cpus": 8
       }
     }
   },

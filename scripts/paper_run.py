@@ -10,6 +10,7 @@
 import pandas as pd
 import numpy as np
 import gc
+import pickle as pkl
 from pathlib import Path
 from tqdm import tqdm
 
@@ -46,8 +47,8 @@ CONFIG = pm.config_setup(ROOT_DIR, contig_path)
 
 if CONFIG['precompute']['loading']:
     logger.info("Loading preprocessed data...")
-    abundance_table = pd.read_csv(ROOT_DIR / "outputs" / "abundance.csv", index_col=0)
-    samples_meta = pd.read_csv(ROOT_DIR / "outputs" / "metadata.csv", index_col=0)
+    abundance_table = pd.read_csv(ROOT_DIR / "outputs" / f"abundance_{CONFIG['precompute']['tag']}.csv", index_col=0)
+    samples_meta = pd.read_csv(ROOT_DIR / "outputs" / f"metadata_{CONFIG['precompute']['tag']}.csv", index_col=0)
 else:
     logger.info("Running full data processing pipeline...")
     abundance_table, samples_meta = pm.master_loading_pipeline(ROOT_DIR, config=CONFIG)
@@ -136,4 +137,8 @@ if CONFIG['differential_abundance']['enabled']:
         CONFIG,
         logger
     )
+    out_path = Path(CONFIG['output']['out_folder'])
+    out_path.mkdir(parents=True, exist_ok=True)
+    with open(out_path / "refseq_result.pkl", "wb") as f:
+        pkl.dump(deseq_results.to_picklable_anndata(), f)
     

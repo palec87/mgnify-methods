@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import gc
 from pydeseq2.dds import DeseqDataSet
+from pydeseq2.default_inference import DefaultInference
 from pydeseq2.ds import DeseqStats
 
 from momics.utils import load_and_clean
@@ -55,6 +56,7 @@ def run_differential_pipeline(
     lfc = config["differential_abundance"]['params']['deseq2']["lfc"]
     sample_type = config['samples']['sample_type']
     tax_level = config['taxonomy']['analysis_level']
+    cpus = config["differential_abundance"]['params']['deseq2'].get("n_cpus", 2)
 
     result = {}
 
@@ -74,7 +76,8 @@ def run_differential_pipeline(
         counts,
         meta,
         design,
-        ref_level=config["differential_abundance"].get("reference")
+        ncpus=cpus,
+        # ref_level=config["differential_abundance"].get("reference")
     )
 
     sig = filter_deseq_results(res, padj, lfc)
@@ -212,23 +215,27 @@ def run_deseq2(
     counts: pd.DataFrame,
     metadata: pd.DataFrame,
     design_factor: str,
-    ref_level=None,
+    ncpus=None,
 ):
     """
     Runs DESeq2 workflow using PyDESeq2.
     """
-
+    inference = DefaultInference(n_cpus=ncpus if ncpus is not None else 2)
     dds = DeseqDataSet(
         counts=counts,
         metadata=metadata,
         design_factors=design_factor,
-        ref_level=ref_level,
-        quiet=True,
+        refit_cooks=True,
+        inference=inference,
+        quiet=False,
     )
+    logger.info("Fitting DESeq2 model...")
+    logger.info(f"  Design: ~ {design_factor}")
+    logger.info(f"Dataset: {dds}")
 
     dds.deseq2()
 
-    stats = DeseqStats(dds)
+    stats = DeseqStats(dds, contrast=f"{design_factor}")
     stats.summary()
 
     res = stats.results_df.copy()
