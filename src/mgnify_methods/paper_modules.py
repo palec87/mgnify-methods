@@ -2,7 +2,10 @@ import json
 from pathlib import Path
 from typing import Dict, Tuple
 import pandas as pd
+import numpy as np
 import gc
+from pydeseq2.dds import DeseqDataSet
+from pydeseq2.ds import DeseqStats
 
 from momics.utils import load_and_clean
 from momics.taxonomy import (
@@ -34,6 +37,59 @@ from mgnify_methods import TaxonomyTable, AbundanceTable
 
 from mgnify_methods.utils.logging import get_logger
 logger = get_logger(__name__, level="INFO")
+
+
+def run_differential_pipeline(
+    table,
+    samples_meta,
+    config,
+    logger,
+):
+    """
+    Main orchestrator across sample types/tax levels
+    """
+
+    design = config["differential_abundance"]['params']['deseq2']["design_factor"]
+    min_count = config["differential_abundance"]['params']['deseq2']["min_counts"]
+    padj = config["differential_abundance"]['params']['deseq2']["padj"]
+    lfc = config["differential_abundance"]['params']['deseq2']["lfc"]
+    sample_type = config['samples']['sample_type']
+    tax_level = config['taxonomy']['analysis_level']
+
+    result = {}
+
+    logger.info(f"Running DESeq2 for sample_type={sample_type}")
+    result[sample_type] = {}
+
+    logger.info(f"  Tax level: {tax_level}")
+
+    counts, meta = prepare_deseq_inputs(
+        table,
+        samples_meta,
+        design,
+        min_count,
+    )
+
+    res, dds = run_deseq2(
+        counts,
+        meta,
+        design,
+        ref_level=config["differential_abundance"].get("reference")
+    )
+
+    sig = filter_deseq_results(res, padj, lfc)
+
+    result[sample_type][tax_level] = {
+        "full": res,
+        "significant": sig,
+        "dds": dds,
+    }
+
+    logger.info(
+        f"    Significant taxa: {len(sig)}"
+    )
+
+    return result
 
 
 def master_loading_pipeline(root_dir, config):
@@ -116,6 +172,92 @@ def master_loading_pipeline(root_dir, config):
 
     return abundance_table, samples_meta
 
+
+#############################
+# DESEq2 pipeline functions #
+#############################
+def prepare_deseq_inputs(
+    count_table: pd.DataFrame,
+    metadata: pd.DataFrame,
+    design_factor: str,
+    min_total_count: int = 10,
+):
+    """
+    Aligns counts and metadata, filters low-abundance taxa,
+    ensures integer matrix for PyDESeq2.
+    """
+
+    # transpose -> samples x taxa
+    counts = count_table.T.copy()
+
+    # align samples
+    common = counts.index.intersection(metadata.index)
+    counts = counts.loc[common]
+    meta = metadata.loc[common]
+
+    # filter low counts across dataset
+    keep = counts.sum(axis=0) >= min_total_count
+    counts = counts.loc[:, keep]
+
+    # enforce integer counts
+    counts = counts.round().astype(int)
+
+    # ensure categorical factor
+    meta[design_factor] = meta[design_factor].astype("category")
+
+    return counts, meta
+
+
+def run_deseq2(
+    counts: pd.DataFrame,
+    metadata: pd.DataFrame,
+    design_factor: str,
+    ref_level=None,
+):
+    """
+    Runs DESeq2 workflow using PyDESeq2.
+    """
+
+    dds = DeseqDataSet(
+        counts=counts,
+        metadata=metadata,
+        design_factors=design_factor,
+        ref_level=ref_level,
+        quiet=True,
+    )
+
+    dds.deseq2()
+
+    stats = DeseqStats(dds)
+    stats.summary()
+
+    res = stats.results_df.copy()
+    res.index.name = "taxon"
+
+    return res, dds
+
+
+def filter_deseq_results(
+    results: pd.DataFrame,
+    padj_thresh=0.05,
+    lfc_thresh=None,
+):
+    """
+    Apply FDR and optional log2FC filtering
+    """
+
+    sig = results.dropna(subset=["padj"])
+    sig = sig[sig["padj"] < padj_thresh]
+
+    if lfc_thresh is not None:
+        sig = sig[np.abs(sig["log2FoldChange"]) >= lfc_thresh]
+
+    return sig.sort_values("padj")
+
+
+#############################
+### Preprocessing helpers ###
+#############################
 def filter_sample_type(
     samples_meta: pd.DataFrame,
     table: TaxonomyTable,

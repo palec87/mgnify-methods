@@ -91,16 +91,28 @@
   },
   "diversity": {
     "alpha": {
-      "enabled": true,
+      "enabled": false,
       "dropna": false,
       "remove_singletons": false,
       "rarefy": false
     },
     "beta": {
-      "enabled": true,
+      "enabled": false,
       "metric": "euclidean",
       "remove_singletons": true,
       "prevalence_cutoff": 0.5
+    }
+  },
+  "differential_abundance": {
+    "enabled": true,
+    "method": "deseq2",
+    "params": {
+      "deseq2": {
+        "design_factor": "study_tag",
+        "min_counts": 10,
+        "padj": 0.05,
+        "lfc": null
+      }
     }
   },
   "feature": "study_tag",

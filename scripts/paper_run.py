@@ -129,4 +129,11 @@ if CONFIG['diversity']['beta']['enabled']:
 ### Differential abundance analysis would go here, following similar structure to above sections
 if CONFIG['differential_abundance']['enabled']:
     logger.info("\n=== Differential Abundance Analysis ===")
-    # Implement differential abundance analysis here, using preprocess_tables and samples_meta
+
+    deseq_results = pm.run_differential_pipeline(
+        abundance_table,
+        samples_meta,
+        CONFIG,
+        logger
+    )
+    
