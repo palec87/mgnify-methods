@@ -39,12 +39,12 @@ from mgnify_methods.utils.logging import get_logger
 
 logger = get_logger('paperRun', level="INFO")
 ROOT_DIR = Path(__file__).parent.parent.resolve()
-contig_path = ROOT_DIR / "configs" / "paper_run_config.json"
+contig_path = ROOT_DIR / "configs" / "small.json"
 
 
 CONFIG = pm.config_setup(ROOT_DIR, contig_path)
 
-if CONFIG['loading']:
+if CONFIG['precompute']['loading']:
     logger.info("Loading preprocessed data...")
     abundance_table = pd.read_csv(ROOT_DIR / "outputs" / "abundance.csv", index_col=0)
     samples_meta = pd.read_csv(ROOT_DIR / "outputs" / "metadata.csv", index_col=0)

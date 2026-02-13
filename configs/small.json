@@ -1,0 +1,117 @@
+{
+  "datasets": {
+    "OSD2018": [
+      "MGYS00006608",
+      "mgnify_data/ERP124424_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "OSD2019": [
+      "MGYS00006607",
+      "mgnify_data/ERP124431_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "Sola": [
+      "MGYS00006680",
+      "mgnify_data/SRP237882_taxonomy_abundances_SSU_v5.0.tsv"
+    ],
+    "Biscay": [
+      "MGYS00006682",
+      "mgnify_data/SRP334933_taxonomy_abundances_SSU_v5.0.tsv"
+    ]
+  },
+  "output": {
+    "use_timestamp": true,
+    "cache_dir": "notebooks/analysis_cache"
+  },
+  "filtering": {
+    "min_reads_cutoff": 25000
+  },
+  "taxonomy": {
+    "ranks": [
+      "superkingdom",
+      "kingdom",
+      "phylum",
+      "class",
+      "order",
+      "family",
+      "genus",
+      "species"
+    ],
+    "analysis_level": "phylum"
+  },
+  "samples": {
+    "sample_type": "prok"
+  },
+  "precompute": {
+    "loading": false,
+    "saving": true,
+    "tag": "small"
+  },
+  "preprocess": {
+    "enabled": false,
+    "method": "rarefaction",
+    "method_params": {
+      "rarefaction": {
+        "depth": null,
+        "n_points": 50
+      }
+    }
+  },
+  "transform": {
+    "enabled": true,
+    "method": "clr",
+    "params": {
+      "pseudo_count": 1e-09
+    },
+    "method_params": {
+      "alr": {
+        "reference_feature": "taxon_1"
+      },
+      "ilr": {
+        "basis": "sbp"
+      },
+      "plr": {
+        "lambda": 0.5
+      }
+    }
+  },
+  "diversity": {
+    "alpha": {
+      "enabled": false,
+      "dropna": false,
+      "remove_singletons": false,
+      "rarefy": false
+    },
+    "beta": {
+      "enabled": false,
+      "metric": "euclidean",
+      "remove_singletons": true,
+      "prevalence_cutoff": 0.5
+    }
+  },
+  "differential_abundance": {
+    "enabled": true,
+    "method": "deseq2",
+    "params": {
+      "deseq2": {
+        "design_factor": "study_tag",
+        "min_counts": 10,
+        "padj": 0.05,
+        "lfc": null
+      }
+    }
+  },
+  "feature": "study_tag",
+  "plots": {
+    "reads_histogram": false,
+    "taxonomic_overlap_venn": true,
+    "rarefaction_curves": true,
+    "rarefaction_mean_std": true,
+    "rarefaction_mean_ci": true,
+    "rarefaction_individual": false,
+    "alpha_diversity": true,
+    "beta_diversity_pcoa": true,
+    "taxa_prevalence_violin": true,
+    "feature_rarefaction": true,
+    "save_figures": true,
+    "dpi": 300
+  }
+}

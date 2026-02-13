@@ -159,16 +159,16 @@ def master_loading_pipeline(root_dir, config):
     abundance_table = pivot_taxonomic_data(abundance_table)
     type(abundance_table)
 
+    if config['precompute']['saving']:
+        ## here save the metadata and abundance table for the paper, 
+        metadata_out_path = root_dir / "outputs" / f"metadata_{config['precompute']['tag']}.csv"
+        abundance_out_path = root_dir / "outputs" / f"abundance_{config['precompute']['tag']}.csv"
 
-    ## here save the metadata and abundance table for the paper, 
-    metadata_out_path = root_dir / "outputs" / "metadata.csv"
-    abundance_out_path = root_dir / "outputs" / "abundance.csv"
-
-    # Save metadata and abundance table
-    samples_meta.to_csv(metadata_out_path, index=True)
-    abundance_table.to_csv(abundance_out_path, index=True)
-    logger.info(f"Saved metadata to {metadata_out_path}")
-    logger.info(f"Saved abundance table to {abundance_out_path}")
+        # Save metadata and abundance table
+        samples_meta.to_csv(metadata_out_path, index=True)
+        abundance_table.to_csv(abundance_out_path, index=True)
+        logger.info(f"Saved metadata to {metadata_out_path}")
+        logger.info(f"Saved abundance table to {abundance_out_path}")
 
     return abundance_table, samples_meta
 
