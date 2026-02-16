@@ -61,7 +61,7 @@
     "sample_type": "prok"
   },
   "precompute": {
-    "loading": true,
+    "loading": false,
     "saving": true,
     "tag": "full"
   },
