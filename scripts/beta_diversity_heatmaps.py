@@ -20,7 +20,7 @@ except ImportError as exc:  # pragma: no cover - optional dependency
 
 @dataclass(frozen=True)
 class Config:
-    analysis_dir: Path = Path("outputs/analysis_20260216_1520")
+    analysis_dir: Path = Path("outputs/analysis_20260216_1844")
     file_patterns: tuple[str, ...] = (
         "permanova_f.csv",
         "permanova_p.csv",

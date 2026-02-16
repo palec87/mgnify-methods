@@ -243,7 +243,7 @@ def permanova_paper(
     config: Dict,
 ):
     sample_type = config['samples']['sample_type']
-    logger.info(f"\n=== Running PERMANOVA for sample type: {sample_type} ===")
+    logger.info(f"=== Running PERMANOVA for sample type: {sample_type} ===")
 
     results = run_permanova_factors(
         table[sample_type],
@@ -448,7 +448,7 @@ def clean_abundance_table(table: pd.DataFrame, config: Dict) -> TaxonomyTable:
     if not taxonomy_table.df.index.name == 'source material ID':
         taxonomy_table.df = taxonomy_table.df.set_index('source material ID')
 
-    logger.info(f"\nTaxonomy table ready: {taxonomy_table.df.shape}")
+    logger.info(f"Taxonomy table ready: {taxonomy_table.df.shape}")
     return taxonomy_table
 
 
@@ -514,7 +514,7 @@ def config_setup(root_dir: Path, config_path: Path) -> Dict:
     config_path = out_folder / 'analysis_config.json'
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
-    print(f"\nConfiguration saved to: {config_path}")
+    print(f"Configuration saved to: {config_path}")
 
     # Configure logger to write to file in output folder
     from mgnify_methods.utils.logging import Logger
@@ -543,7 +543,7 @@ def load_mgnify_meta(path: Path, datasets: Dict) -> Tuple[pd.DataFrame, pd.DataF
 
     # count nans in samples_meta
     nan_counts = samples_meta.isna().sum()
-    logger.info(f"NaN counts in samples metadata:\n{nan_counts}")
+    logger.info(f"NaN counts in samples metadata:{nan_counts}")
     logger.info(f"Samples metadata shape: {samples_meta.shape}")
     return analysis_meta, samples_meta
 
@@ -551,7 +551,7 @@ def load_mgnify_meta(path: Path, datasets: Dict) -> Tuple[pd.DataFrame, pd.DataF
 def reads_filtering(samples_meta: pd.DataFrame, config: Dict) -> pd.DataFrame:
     # Plot reads distribution before filtering
     if config['plots']['reads_histogram']:
-        logger.info("\n=== Reads Distribution (Unfiltered) ===")
+        logger.info("=== Reads Distribution (Unfiltered) ===")
         plot_feature_reads_hist(
             samples_meta=samples_meta,
             feature=config['feature'],
@@ -564,7 +564,7 @@ def reads_filtering(samples_meta: pd.DataFrame, config: Dict) -> pd.DataFrame:
     # Apply filtering
     cutoff = config['filtering']['min_reads_cutoff']
     to_drop = filter_number_reads(samples_meta, cutoff)
-    logger.info(f"\nFiltering samples with < {cutoff} reads: {len(to_drop)} samples to remove")
+    logger.info(f"Filtering samples with < {cutoff} reads: {len(to_drop)} samples to remove")
 
     for sample in to_drop:
         samples_meta = samples_meta[samples_meta.index != sample]
@@ -573,7 +573,7 @@ def reads_filtering(samples_meta: pd.DataFrame, config: Dict) -> pd.DataFrame:
 
     # Plot reads distribution after filtering
     if config['plots']['reads_histogram']:
-        logger.info("\n=== Reads Distribution (Filtered) ===")
+        logger.info("=== Reads Distribution (Filtered) ===")
         plot_feature_reads_hist(
             samples_meta=samples_meta,
             feature=config['feature'],

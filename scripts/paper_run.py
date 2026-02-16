@@ -37,7 +37,7 @@ from mgnify_methods.utils.logging import get_logger
 
 logger = get_logger('paperRun', level="INFO")
 ROOT_DIR = Path(__file__).parent.parent.resolve()
-contig_path = ROOT_DIR / "configs" / "paper.json"
+contig_path = ROOT_DIR / "configs" / "small.json"
 
 
 CONFIG = pm.config_setup(ROOT_DIR, contig_path)
@@ -99,7 +99,7 @@ if CONFIG['diversity']['beta']['enabled']:
 
     if CONFIG['preprocess']['enabled']:
         method = CONFIG['preprocess']['method']
-        logger.info(f"\n=== Using method {method} ===")
+        logger.info(f"=== Using method {method} ===")
         
         preprocess_tables = apply_preprocessing_method(abundance_table, method, CONFIG)
     else:
@@ -127,14 +127,12 @@ if CONFIG['diversity']['beta']['enabled']:
     ### permanova analysis ###
     pm.permanova_paper(preprocess_tables, samples_meta, config=CONFIG)
 
-    
-
 
 #######################################
 ### Differential abundance analysis ###
 #######################################
 if CONFIG['differential_abundance']['enabled']:
-    logger.info("\n=== Differential Abundance Analysis ===")
+    logger.info("=== Differential Abundance Analysis ===")
 
     deseq_results = pm.run_differential_pipeline_loop(
         abundance_table,

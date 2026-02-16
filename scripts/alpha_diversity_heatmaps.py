@@ -20,7 +20,7 @@ except ImportError as exc:  # pragma: no cover - optional dependency
 @dataclass(frozen=True)
 class Config:
     csv_path: Path = Path(
-        "outputs/analysis_20260216_1520/alpha_diversity_stats_study_tag_remove_singletons.csv"
+        "outputs/analysis_20260216_1844/alpha_diversity_stats_study_tag_remove_singletons.csv"
     )
     comparison_separator: str = " vs "
     value_columns: tuple[str, ...] = (

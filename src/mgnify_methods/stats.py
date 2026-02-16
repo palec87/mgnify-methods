@@ -343,33 +343,50 @@ def alpha_diversity_report(df_diversity, factors_df, feature='season'):
     return diversity_df, diversity_results, diversity_metrics
 
 
+def cliffs_delta_fast(x, y):
+    """Vectorized Cliff's delta"""
+    x = np.asarray(x)
+    y = np.asarray(y)
+
+    gt = np.sum(x[:, None] > y)
+    lt = np.sum(x[:, None] < y)
+
+    return (gt - lt) / (len(x) * len(y))
+
+
 def compare_alpha_diversities(diversity_df, diversity_metrics, feature):
     # Statistical comparison between studies
     from scipy.stats import mannwhitneyu, kruskal
 
-    logger.info("\n" + "="*60)
+    logger.info("" + "="*60)
     logger.info("STATISTICAL COMPARISON OF ALPHA DIVERSITY BETWEEN STUDIES")
     logger.info("="*60)
 
-    studies = diversity_df[feature].unique()
+    logger.info(f"Feature with Nans: {diversity_df[feature].isna().sum()} NaN values in feature column '{feature}'")
+
+    studies = diversity_df[feature].dropna().unique()
     results = []
     if len(studies) == 2:
 
         s1, s2 = studies
 
         for metric in diversity_metrics:
-            logger.info(f"\n{metric.upper()} - Mann-Whitney U test")
-            g1 = diversity_df[diversity_df[feature] == s1][metric]
-            g2 = diversity_df[diversity_df[feature] == s2][metric]
-        
+            logger.info(f"{metric.upper()} - Mann-Whitney U test")
+            g1 = diversity_df.query(f"{feature} == @s1")[metric]
+            g2 = diversity_df.query(f"{feature} == @s2")[metric]
+            logger.info(f"Group {s1} NnaN values: {g1.isna().sum()}, Group {s2} NaN values: {g2.isna().sum()}")
+
+            g1 = g1.dropna()
+            g2 = g2.dropna()
+
+            logger.info(f"Counting non-NaN values: {s1}={len(g1)}, {s2}={len(g2)}")
+            logger.info(f"Group {s1} NnaN values: {g1.isna().sum()}, Group {s2} NaN values: {g2.isna().sum()}")
             U, p = mannwhitneyu(g1, g2, alternative='two-sided')
 
             delta_median = g1.median() - g2.median()
             rbc = 1 - (2 * U) / (len(g1) * len(g2))
 
-            gt = sum(a > b for a, b in itertools.product(g1, g2))
-            lt = sum(a < b for a, b in itertools.product(g1, g2))
-            cliff_delta = (gt - lt) / (len(g1) * len(g2))
+            cliff_delta = cliffs_delta_fast(g1.values, g2.values)
 
             results.append({
                 'Metric': metric,
@@ -386,61 +403,71 @@ def compare_alpha_diversities(diversity_df, diversity_metrics, feature):
         # Convert the entire list of results into a single DataFrame
         return pd.DataFrame(results)
 
-    elif len(studies) > 2:
-        from statsmodels.stats.multitest import multipletests
-        for metric in diversity_metrics:
-            groups = [
-                diversity_df[diversity_df[feature] == s][metric]
-                for s in studies
-            ]
-            H, p_value = kruskal(*groups)
+    # multi-group comparison (Kruskal-Wallis + pairwise Mann-Whitney U with Holm correction)
+    from statsmodels.stats.multitest import multipletests
 
-            N = sum(len(g) for g in groups)
-            k = len(groups)
+    all_pairwise_rows = []
+    all_pvals = []
 
-            epsilon_sq = (H - k + 1) / (N - k)
+    for metric in diversity_metrics:
+        groups = [
+            diversity_df.query(f"{feature} == @s")[metric].dropna()
+            for s in studies
+        ]
+        [logger.info(f"Group {s} number of samples: {len(groups[i])} for group {s}") for i, s in enumerate(studies)]
 
-            logger.info(f"\n{metric.upper()} - Kruskal-Wallis")
-            logger.info(f"H={H:.3f}, p={p_value:.4f}, epsilon²={epsilon_sq:.3f}")
-        
-            pairwise_rows = []
-            pvals = []
+        H, kw_p = kruskal(*groups)
 
-            for s1, s2 in itertools.combinations(studies, 2):
+        N = sum(len(g) for g in groups)
+        k = len(groups)
 
-                g1 = diversity_df[diversity_df[feature] == s1][metric].dropna()
-                g2 = diversity_df[diversity_df[feature] == s2][metric].dropna()
+        epsilon_sq = (H - k + 1) / (N - k)
 
-                U, p_pair = mannwhitneyu(g1, g2, alternative='two-sided')
+        logger.info(f"{metric.upper()} - Kruskal-Wallis")
+        logger.info(f"H={H:.3f}, p={kw_p}, epsilon²={epsilon_sq:.3f}")
 
-                delta_median = g1.median() - g2.median()
-                rbc = 1 - (2 * U) / (len(g1) * len(g2))
+        if kw_p > 0.05:
+            logger.info("No significant differences found.")
+            continue
+    
+        logger.info("Significant differences found, performing pairwise Mann-Whitney U tests with Holm correction...")
 
-                gt = sum(a > b for a, b in itertools.product(g1, g2))
-                lt = sum(a < b for a, b in itertools.product(g1, g2))
-                cliff = (gt - lt) / (len(g1) * len(g2))
+        for s1, s2 in itertools.combinations(studies, 2):
 
-                pairwise_rows.append({
-                    "Metric": metric,
-                    "Comparison": f"{s1} vs {s2}",
-                    "Test": "Pairwise MW",
-                    "Statistic": U,
-                    "RawP": p_pair,
-                    "DeltaMedian": delta_median,
-                    "RBC": rbc,
-                    "CliffDelta": cliff,
-                    "KW_H": H,
-                    "KW_P": p_value,
-                    "KW_EpsilonSq": epsilon_sq
-                })
+            g1 = diversity_df[diversity_df[feature] == s1][metric].dropna()
+            g2 = diversity_df[diversity_df[feature] == s2][metric].dropna()
 
-                pvals.append(p_pair)
+            U, p_pair = mannwhitneyu(g1, g2, alternative='two-sided')
 
-            # Adjust p-values
-            adj = multipletests(pvals, method="holm")[1]
+            delta_median = g1.median() - g2.median()
+            rbc = 1 - (2 * U) / (len(g1) * len(g2))
 
-            for row, adj_p in zip(pairwise_rows, adj):
-                row["AdjP"] = adj_p
-                results.append(row)
+            cliff_delta = cliffs_delta_fast(g1.values, g2.values)
 
-        return pd.DataFrame(results)
+            row ={
+                "Metric": metric,
+                "Comparison": f"{s1} vs {s2}",
+                "Test": "Pairwise MW",
+                "Statistic": U,
+                "RawP": p_pair,
+                "DeltaMedian": delta_median,
+                "RBC": rbc,
+                "CliffDelta": cliff_delta,
+                "KW_H": H,
+                "KW_P": kw_p,
+                "KW_EpsilonSq": epsilon_sq
+            }
+
+            all_pairwise_rows.append(row)
+            all_pvals.append(p_pair)
+
+    # Adjust p-values
+    if all_pvals:
+        adj = multipletests(all_pvals, method="holm")[1]
+
+        for row, adj_p in zip(all_pairwise_rows, adj):
+            row["AdjP"] = adj_p
+
+    results.extend(all_pairwise_rows)
+
+    return pd.DataFrame(results)

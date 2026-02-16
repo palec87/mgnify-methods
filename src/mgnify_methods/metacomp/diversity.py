@@ -32,7 +32,7 @@ logger = get_logger(__name__, level="INFO")
 def beta_diversity_analysis(abundance_table: pd.DataFrame, samples_meta: pd.DataFrame, config: dict):
     if not config['diversity']['beta']['enabled']:
         return
-    logger.info("\n=== Beta Diversity Analysis ===")
+    logger.info("=== Beta Diversity Analysis ===")
     tax_level = config['taxonomy']['analysis_level']
     logger.info(f"Analyzing at {tax_level} level...")
     
@@ -79,7 +79,7 @@ def alpha_diversity_analysis(
         abundance_table: pd.DataFrame,
         samples_meta: pd.DataFrame,
         config: dict):
-    logger.info("\n=== Alpha Diversity Analysis ===")
+    logger.info("=== Alpha Diversity Analysis ===")
     tax_level = config['taxonomy']['analysis_level']
     feature = config['feature']
     logger.info(f"Analyzing at {tax_level} level...")
@@ -199,7 +199,7 @@ def run_permanova(
                     logger.info(
                         f"  F-statistic: {permanova_result['test statistic']:.4f}"
                     )
-                    logger.info(f"  p-value: {permanova_result['p-value']:.4f}\n")
+                    logger.info(f"  p-value: {permanova_result['p-value']:.4f}")
         else:
             logger.info(
                 f"Skipping factor '{remaining_factor}' due to unique values in grouping vector."
