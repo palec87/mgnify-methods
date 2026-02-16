@@ -75,20 +75,25 @@
   },
   "diversity": {
     "alpha": {
-      "enabled": false,
+      "enabled": true,
       "dropna": false,
       "remove_singletons": false,
       "rarefy": false
     },
     "beta": {
-      "enabled": false,
+      "enabled": true,
       "metric": "euclidean",
       "remove_singletons": true,
-      "prevalence_cutoff": 0.5
+      "prevalence_cutoff": 0.5,
+      "permanova_factors": [
+        "season",
+        "year",
+        "study_tag"
+      ]
     }
   },
   "differential_abundance": {
-    "enabled": true,
+    "enabled": false,
     "method": "deseq2",
     "params": {
       "deseq2": {

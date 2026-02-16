@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from typing import Dict, Tuple
 import pandas as pd
+import pickle
+from mgnify_methods.metacomp.diversity import permanova_stat_dfs, run_permanova_factors
 import numpy as np
 import gc
 from pydeseq2.dds import DeseqDataSet
@@ -95,6 +97,62 @@ def run_differential_pipeline(
     return result
 
 
+def run_differential_pipeline_loop(
+    table,
+    samples_meta,
+    config,
+    logger,
+):
+    """
+    Main orchestrator across sample types/tax levels
+    """
+
+    design = config["differential_abundance"]['params']['deseq2']["design_factor"]
+    min_count = config["differential_abundance"]['params']['deseq2']["min_counts"]
+    padj = config["differential_abundance"]['params']['deseq2']["padj"]
+    lfc = config["differential_abundance"]['params']['deseq2']["lfc"]
+    sample_type = config['samples']['sample_type']
+    tax_level = config['taxonomy']['analysis_level']
+    cpus = config["differential_abundance"]['params']['deseq2'].get("n_cpus", 2)
+
+    result = {}
+
+    logger.info(f"Running DESeq2 for sample_type={sample_type}")
+    result[sample_type] = {}
+
+    logger.info(f"  Tax level: {tax_level}")
+
+    counts, meta = prepare_deseq_inputs(
+        table,
+        samples_meta,
+        design,
+        min_count,
+    )
+
+    res, dds = run_deseq2_loop(
+        counts,
+        meta,
+        design,
+        ncpus=cpus,
+        # ref_level=config["differential_abundance"].get("reference")
+    )
+    for contrast, r in res.items():
+        sig = filter_deseq_results(r, padj, lfc)
+
+        result[sample_type][contrast] = {
+            "full": r,
+            "significant": sig,
+            # "dds": dds,
+        }
+
+        logger.info(
+            f"    Significant taxa: {len(sig)}"
+        )
+    result['dds'] = dds
+
+    return result
+
+
 def master_loading_pipeline(root_dir, config):
     analysis_meta, samples_meta = load_mgnify_meta(
         path=Path(config['input']['cache_dir']),
@@ -176,6 +234,40 @@ def master_loading_pipeline(root_dir, config):
     return abundance_table, samples_meta
 
 
+###############################
+### Permanova global runner ###
+###############################
+def permanova_paper(
+    table: pd.DataFrame,
+    samples_meta: pd.DataFrame,
+    config: Dict,
+):
+    sample_type = config['samples']['sample_type']
+    logger.info(f"\n=== Running PERMANOVA for sample type: {sample_type} ===")
+
+    results = run_permanova_factors(
+        table[sample_type],
+        samples_meta,
+        config['diversity']['beta']['permanova_factors'],
+        metric='euclidean',
+    )
+
+    df_p, df_p_granular, df_f, df_f_granular = permanova_stat_dfs(results, config['diversity']['beta']['permanova_factors'])
+
+    out_folder = Path(config['output']['out_folder'])   
+    save_path = out_folder / 'permanova_dict.pkl'
+    with open(save_path, 'wb') as f:
+        pickle.dump(results, f)
+
+    df_p.to_csv(out_folder / 'permanova_p.csv')
+
+    df_f.to_csv(out_folder / 'permanova_f.csv')
+
+    df_p_granular.to_csv(out_folder / 'permanova_p_granular.csv')
+
+    df_f_granular.to_csv(out_folder / 'permanova_f_granular.csv')
+
+
 #############################
 # DESEq2 pipeline functions #
 #############################
@@ -209,6 +301,53 @@ def prepare_deseq_inputs(
     meta[design_factor] = meta[design_factor].astype("category")
 
     return counts, meta
+
+
+def run_deseq2_loop(
+    counts: pd.DataFrame,
+    metadata: pd.DataFrame,
+    design_factor: str,
+    ncpus=None,
+):
+    """
+    Runs DESeq2 workflow using PyDESeq2 with pairwise comparisons.
+    """
+    inference = DefaultInference(n_cpus=ncpus if ncpus is not None else 2)
+    dds = DeseqDataSet(
+        counts=counts,
+        metadata=metadata,
+        design_factors=design_factor,
+        refit_cooks=True,
+        inference=inference,
+        quiet=False,
+    )
+    logger.info("Fitting DESeq2 model...")
+    logger.info(f"  Design: ~ {design_factor}")
+    logger.info(f"Dataset: {dds}")
+
+    dds.deseq2()
+
+    # Get unique levels of the design factor from metadata
+    factor_levels = sorted(metadata[design_factor].unique())
+    logger.info(f"Factor levels: {factor_levels}")
+    
+    if len(factor_levels) < 2:
+        raise ValueError(f"Design factor '{design_factor}' has less than 2 levels for contrast")
+    
+    # Perform all pairwise comparisons
+    result = {}
+    for i, group_to_compare in enumerate(factor_levels):
+        for baseline in factor_levels[:i]:
+            contrast_name = f"{group_to_compare}_vs_{baseline}"
+            logger.info(f"Computing contrast: {contrast_name}")
+            stats = DeseqStats(dds, contrast=(design_factor, group_to_compare, baseline))
+            stats.summary()
+            
+            res = stats.results_df.copy()
+            res.index.name = "taxon"
+            result[contrast_name] = res
+
+    return result, dds
 
 
 def run_deseq2(

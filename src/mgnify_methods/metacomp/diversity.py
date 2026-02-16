@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Iterable, Tuple, List, Dict
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
+from tqdm import tqdm
 
 from mgnify_methods.utils.plot import (
     create_alpha_diversity_plots,
@@ -23,10 +23,7 @@ from scipy.spatial.distance import pdist, squareform
 from skbio import DistanceMatrix
 from skbio.stats.ordination import pcoa
 from skbio.stats.distance import permanova
-    
-from momics.taxonomy import (
-    rarefy_table,
-)
+
 
 from mgnify_methods.utils.logging import get_logger
 logger = get_logger(__name__, level="INFO")
@@ -209,3 +206,63 @@ def run_permanova(
             )
 
     return permanova_results
+
+
+###############
+### helpers ###
+###############
+def run_permanova_factors(df, metadata, factors_list, metric='euclidean'):
+
+    samples_meta_no_na = metadata.dropna(axis=1)
+    results = {}
+
+    for factor in tqdm(factors_list):
+        result = run_permanova(
+            df,
+            samples_meta_no_na,
+            permanova_factor=factor,
+            permanova_group=samples_meta_no_na[factor].unique().tolist(),  # all unique values of the factor
+            permanova_additional_factors=[f for f in factors_list if f != factor],  # include all factors for stratification except the current one
+            metric=metric,
+            permutations=1999,  # increase permutations for more robust results
+        )
+        results[f"{factor}_all"] = result
+
+        for sub_factor in samples_meta_no_na[factor].unique().tolist():
+            try:
+                sub_result = run_permanova(
+                    df,
+                    samples_meta_no_na,
+                    permanova_factor=factor,
+                    permanova_group=[sub_factor],
+                    permanova_additional_factors=[f for f in factors_list if f != factor],  # include all factors for stratification except the current one
+                    metric=metric,
+                    permutations=1999,  # increase permutations for more robust results
+                )
+                results[f"{factor}_{sub_factor}"] = sub_result
+            except Exception as e:
+                logger.warning(f"Error running PERMANOVA for {factor}={sub_factor}: {e}")
+                results[f"{factor}_{sub_factor}"] = None
+    return results
+
+
+def permanova_stat_dfs(results, factor_list):
+    df_p = pd.DataFrame(columns=factor_list)
+    df_p_granular = pd.DataFrame(columns=[f for f in factor_list if '_all' not in f])
+
+    df_f = pd.DataFrame(columns=factor_list)
+    df_f_granular = pd.DataFrame(columns=[f for f in factor_list if '_all' not in f])
+
+    for key, result in results.items():
+        if "_all" in key:
+            for sub_key, item in result.items():
+                df_p.loc[key.split("_all")[0], sub_key] = item['p-value']
+                df_f.loc[key.split("_all")[0], sub_key] = item['test statistic']
+        else:
+            try:
+                for sub_key, item in result.items():
+                    df_p_granular.loc[key, sub_key] = item['p-value']
+                    df_f_granular.loc[key, sub_key] = item['test statistic']
+            except AttributeError:
+                pass
+    return df_p, df_p_granular, df_f, df_f_granular

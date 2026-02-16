@@ -12,11 +12,8 @@ import numpy as np
 import gc
 import pickle as pkl
 from pathlib import Path
-from tqdm import tqdm
 
 from mgnify_methods.taxonomy import (
-    aggregate_by_taxonomic_level,
-    pivot_taxonomic_data,
     remove_singletons_per_sample,
     prevalence_cutoff_abund,
 )
@@ -127,11 +124,19 @@ if CONFIG['diversity']['beta']['enabled']:
     sample_type = CONFIG['samples']['sample_type']
     beta_diversity_analysis(preprocess_tables[sample_type], samples_meta, config=CONFIG)
 
-### Differential abundance analysis would go here, following similar structure to above sections
+    ### permanova analysis ###
+    pm.permanova_paper(preprocess_tables, samples_meta, config=CONFIG)
+
+    
+
+
+#######################################
+### Differential abundance analysis ###
+#######################################
 if CONFIG['differential_abundance']['enabled']:
     logger.info("\n=== Differential Abundance Analysis ===")
 
-    deseq_results = pm.run_differential_pipeline(
+    deseq_results = pm.run_differential_pipeline_loop(
         abundance_table,
         samples_meta,
         CONFIG,
@@ -139,6 +144,6 @@ if CONFIG['differential_abundance']['enabled']:
     )
     out_path = Path(CONFIG['output']['out_folder'])
     out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "refseq_result.pkl", "wb") as f:
+    with open(out_path / "deseq_result.pkl", "wb") as f:
         pkl.dump(deseq_results, f)
     
