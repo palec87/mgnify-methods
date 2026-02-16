@@ -121,7 +121,8 @@
         "design_factor": "study_tag",
         "min_counts": 100,
         "padj": 0.05,
-        "lfc": 1.0
+        "lfc": 1.0,
+        "n_cpus": 32
       }
     }
   },
