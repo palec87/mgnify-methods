@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Analysis Pipeline - Mermaid Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            margin-top: 0;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin-right: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #1976D2;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            background-color: #fafafa;
+            border-radius: 4px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Data Analysis Pipeline: Alpha, Beta, and Differential Abundance</h1>
+        
+        <div class="controls">
+            <button onclick="downloadSVG()">Download SVG</button>
+            <button onclick="downloadPNG()">Download PNG</button>
+            <p style="font-size: 12px; color: #666; margin: 10px 0;">
+                SVG format is recommended for high-quality publications. 
+                Your browser may download the image automatically or open it in a new tab.
+            </p>
+        </div>
+        
+        <div class="mermaid" id="diagram">
+graph TD
+    A["Load Configuration<br/>small.json"] --> B{Precompute<br/>Loading?}
+    
+    B -->|Yes| C["Load Preprocessed Data<br/>abundance & metadata CSVs"]
+    B -->|No| D["Master Loading Pipeline"]
+    
+    D --> D1["Load MGnify Metadata"]
+    D1 --> D2["Load EMO-BON Data"]
+    D2 --> D3["Merge EMO-BON + MGnify"]
+    D3 --> D4["Filter by Reads Count"]
+    D4 --> D5["Load Taxonomy Data"]
+    D5 --> D6["Synchronize Metadata<br/>& Taxonomy"]
+    D6 --> D7["Convert to TaxonomyTable"]
+    D7 --> D8["Filter to Sample Type<br/>prok/euk"]
+    D8 --> D9["Aggregate by Taxonomic Level<br/>phylum/class/etc"]
+    D9 --> D10["Pivot to Abundance Table"]
+    
+    C --> E["Abundance Table<br/>& Metadata Ready"]
+    D10 --> E
+    
+    E --> F["Alpha Diversity<br/>Analysis"]
+    E --> G["Beta Diversity<br/>Analysis"]
+    E --> H["Differential Abundance<br/>Analysis"]
+    
+    F --> F1["Case 1: No Processing"]
+    F --> F2["Case 2: Remove Singletons"]
+    F1 --> F3["Calculate Alpha Metrics<br/>Shannon, Simpson, Chao1, etc"]
+    F2 --> F3
+    F3 --> F4["Generate Summary & Stats"]
+    F4 --> F5["Save Results &<br/>Alpha Plots"]
+    
+    G --> G1["Remove Singletons<br/>per Sample"]
+    G1 --> G2["Prevalence Cutoff<br/>0.5%"]
+    G2 --> G3["Optional Preprocessing<br/>rarefaction/tss"]
+    G3 --> G4["CLR Transform"]
+    G4 --> G5["Calculate Beta Diversity<br/>Euclidean Distance"]
+    G5 --> G6["PCoA Ordination"]
+    G6 --> G7["PERMANOVA by Factors<br/>season, study_tag, year"]
+    G7 --> G8["Generate PCoA Plot &<br/>PERMANOVA Heatmaps"]
+    
+    H --> H1["Prepare DESeq2 Inputs<br/>Integer Counts"]
+    H1 --> H2["Fit DESeq2 Model"]
+    H2 --> H3["Generate Pairwise Contrasts"]
+    H3 --> H4["For Each Contrast:<br/>Test for Significance"]
+    H4 --> H5["Filter by padj & log2FC"]
+    H5 --> H6["Save DESeq2 Results<br/>& Generate Plots"]
+    H6 --> H61["Volcano Plots<br/>MA Plots<br/>P-value Distributions"]
+    
+    F5 --> I["Analysis Complete"]
+    G8 --> I
+    H61 --> I
+    
+    I --> J["Output Folder:<br/>analysis_YYYYMM_HHMM"]
+    J --> K["Figures & Data Exports"]
+    
+    style A fill:#e1f5ff
+    style F fill:#fff3e0
+    style G fill:#f3e5f5
+    style H fill:#e8f5e9
+    style I fill:#fce4ec
+        </div>
+    </div>
+
+    <script>
+        mermaid.contentLoaderAsync();
+
+        async function downloadSVG() {
+            try {
+                const svg = document.querySelector('.mermaid svg');
+                if (!svg) {
+                    alert('Diagram not rendered yet. Please wait a moment and try again.');
+                    return;
+                }
+                const svgData = new XMLSerializer().serializeToString(svg);
+                const canvas = document.createElement("canvas");
+                canvas.width = svg.getBBox().width;
+                canvas.height = svg.getBBox().height;
+                
+                const blob = new Blob([svgData], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'data_analysis_pipeline.svg';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (e) {
+                console.error('Error downloading SVG:', e);
+                alert('Error downloading SVG. See console for details.');
+            }
+        }
+
+        async function downloadPNG() {
+            try {
+                const svg = document.querySelector('.mermaid svg');
+                if (!svg) {
+                    alert('Diagram not rendered yet. Please wait a moment and try again.');
+                    return;
+                }
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const svgData = new XMLSerializer().serializeToString(svg);
+                const img = new Image();
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    canvas.toBlob(function(blob) {
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = 'data_analysis_pipeline.png';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    });
+                };
+                img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+            } catch (e) {
+                console.error('Error downloading PNG:', e);
+                alert('Error downloading PNG. Try SVG format instead.');
+            }
+        }
+    </script>
+</body>
+</html>

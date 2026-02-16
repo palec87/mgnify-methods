@@ -1,0 +1,60 @@
+graph TD
+    A["Load Configuration<br/>small.json"] --> B{Precompute<br/>Loading?}
+    
+    B -->|Yes| C["Load Preprocessed Data<br/>abundance & metadata CSVs"]
+    B -->|No| D["Master Loading Pipeline"]
+    
+    D --> D1["Load MGnify Metadata"]
+    D1 --> D2["Load EMO-BON Data"]
+    D2 --> D3["Merge EMO-BON + MGnify"]
+    D3 --> D4["Filter by Reads Count"]
+    D4 --> D5["Load Taxonomy Data"]
+    D5 --> D6["Synchronize Metadata<br/>& Taxonomy"]
+    D6 --> D7["Convert to TaxonomyTable"]
+    D7 --> D8["Filter to Sample Type<br/>prok/euk"]
+    D8 --> D9["Aggregate by Taxonomic Level<br/>phylum/class/etc"]
+    D9 --> D10["Pivot to Abundance Table"]
+    
+    C --> E["Abundance Table<br/>& Metadata Ready"]
+    D10 --> E
+    
+    E --> F["Alpha Diversity<br/>Analysis"]
+    E --> G["Beta Diversity<br/>Analysis"]
+    E --> H["Differential Abundance<br/>Analysis"]
+    
+    F --> F1["Case 1: No Processing"]
+    F --> F2["Case 2: Remove Singletons"]
+    F1 --> F3["Calculate Alpha Metrics<br/>Shannon, Simpson, Chao1, etc"]
+    F2 --> F3
+    F3 --> F4["Generate Summary & Stats"]
+    F4 --> F5["Save Results &<br/>Alpha Plots"]
+    
+    G --> G1["Remove Singletons<br/>per Sample"]
+    G1 --> G2["Prevalence Cutoff<br/>0.5%"]
+    G2 --> G3["Optional Preprocessing<br/>rarefaction/tss"]
+    G3 --> G4["CLR Transform"]
+    G4 --> G5["Calculate Beta Diversity<br/>Euclidean Distance"]
+    G5 --> G6["PCoA Ordination"]
+    G6 --> G7["PERMANOVA by Factors<br/>season, study_tag, year"]
+    G7 --> G8["Generate PCoA Plot &<br/>PERMANOVA Heatmaps"]
+    
+    H --> H1["Prepare DESeq2 Inputs<br/>Integer Counts"]
+    H1 --> H2["Fit DESeq2 Model"]
+    H2 --> H3["Generate Pairwise Contrasts"]
+    H3 --> H4["For Each Contrast:<br/>Test for Significance"]
+    H4 --> H5["Filter by padj & log2FC"]
+    H5 --> H6["Save DESeq2 Results<br/>& Generate Plots"]
+    H6 --> H61["Volcano Plots<br/>MA Plots<br/>P-value Distributions"]
+    
+    F5 --> I["Analysis Complete"]
+    G8 --> I
+    H61 --> I
+    
+    I --> J["Output Folder:<br/>analysis_YYYYMM_HHMM"]
+    J --> K["Figures & Data Exports"]
+    
+    style A fill:#e1f5ff
+    style F fill:#fff3e0
+    style G fill:#f3e5f5
+    style H fill:#e8f5e9
+    style I fill:#fce4ec
