@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,9 +20,7 @@ except ImportError as exc:  # pragma: no cover - optional dependency
 
 @dataclass(frozen=True)
 class Config:
-    csv_path: Path = Path(
-        "outputs/analysis_20260216_1844/alpha_diversity_stats_study_tag_remove_singletons.csv"
-    )
+    csv_path: Path
     comparison_separator: str = " vs "
     value_columns: tuple[str, ...] = (
         # "RawP",
@@ -88,8 +87,21 @@ def _get_all_campaigns(df: pd.DataFrame) -> list[str]:
     return campaigns
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate heatmaps from alpha diversity statistics tables."
+    )
+    parser.add_argument(
+        "csv_path",
+        type=Path,
+        help="Path to the alpha diversity statistics CSV file",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    config = Config()
+    args = _parse_args()
+    config = Config(csv_path=args.csv_path)
     csv_path = config.csv_path
     if not csv_path.exists():
         raise SystemExit(f"CSV not found: {csv_path}")

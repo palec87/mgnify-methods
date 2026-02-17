@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import argparse
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -15,9 +16,7 @@ import pickle
 
 @dataclass(frozen=True)
 class Config:
-    pickle_path: Path = Path(
-        "outputs/analysis_20260216_1520/deseq_result.pkl"
-    )
+    pickle_path: Path
     padj_threshold: float = 0.05
     lfc_threshold: float = 1.0
     dpi: int = 300
@@ -210,8 +209,20 @@ def _plot_summary_table(
     plt.close()
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate plots from DESeq2 results."
+    )
+    parser.add_argument(
+        "pickle_path",
+        type=Path,
+        help="Path to the DESeq2 results pickle file",
+    )
+    return parser.parse_args()
+
 def main() -> None:
-    config = Config()
+    args = _parse_args()
+    config = Config(pickle_path=args.pickle_path)
     results = _load_deseq_results(config.pickle_path)
     
     output_dir = config.pickle_path.parent

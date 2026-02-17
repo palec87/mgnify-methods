@@ -35,6 +35,16 @@
       "genus",
       "species"
     ],
+    "indicators": {
+      "superkingdom": "sk__",
+      "kingdom": "k__",
+      "phylum": "p__",
+      "class": "c__",
+      "order": "o__",
+      "family": "f__",
+      "genus": "g__",
+      "species": "s__"
+    },
     "analysis_level": "phylum"
   },
   "samples": {

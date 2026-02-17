@@ -220,6 +220,13 @@ def master_loading_pipeline(root_dir, config):
     abundance_table = pivot_taxonomic_data(abundance_table)
     type(abundance_table)
 
+    ## Here I need to remove rows which have undefined tax_level, basically ;p__; for example if tax_level is 'genus', I need to remove rows which have ';g__' but not ';s__' (species level is missing). This is because these undefined taxa can cause problems for the DESeq2 analysis later on, and they also don't provide useful information. I will keep rows which have defined taxonomic information at the selected level, even if they are missing information at lower levels. For example, if tax_level is 'family', I will keep rows which have ';f__' even if they are missing ';g__' and ';s__'.
+    tax_prefix = config['taxonomy']['indicators'][tax_level]
+    logger.info(f"Filtering out taxa with undefined {tax_level} (prefix '{tax_prefix}')")
+    logger.info(f"Abundance table before filtering {tax_level}: {abundance_table.shape}")
+    abundance_table = abundance_table[~abundance_table.index.str.contains(f";{tax_prefix};")]
+    logger.info(f"Abundance table after filtering {tax_level}: {abundance_table.shape}")
+
     if config['precompute']['saving']:
         ## here save the metadata and abundance table for the paper, 
         metadata_out_path = root_dir / "outputs" / f"metadata_{config['precompute']['tag']}.csv"

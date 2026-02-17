@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,7 +21,7 @@ except ImportError as exc:  # pragma: no cover - optional dependency
 
 @dataclass(frozen=True)
 class Config:
-    analysis_dir: Path = Path("outputs/analysis_20260216_1844")
+    analysis_dir: Path
     file_patterns: tuple[str, ...] = (
         "permanova_f.csv",
         "permanova_p.csv",
@@ -28,10 +29,6 @@ class Config:
         "permanova_p_granular.csv",
     )
     output_name_pattern: str = "heatmap_{filename}.png"
-
-
-def _sanitize_token(value: str) -> str:
-    return "_".join(value.strip().split())
 
 
 def _plot_heatmap(
@@ -83,13 +80,26 @@ def _process_permanova_table(csv_path: Path) -> pd.DataFrame:
     
     # Convert to numeric where possible
     for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='ignore')
+        df[col] = pd.to_numeric(df[col])
     
     return df
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate heatmaps from beta diversity PERMANOVA tables."
+    )
+    parser.add_argument(
+        "analysis_dir",
+        type=Path,
+        help="Path to the analysis directory containing PERMANOVA CSV files",
+    )
+    return parser.parse_args()
+
+    
 def main() -> None:
-    config = Config()
+    args = _parse_args()
+    config = Config(analysis_dir=args.analysis_dir)
     analysis_dir = config.analysis_dir
     
     if not analysis_dir.exists():
