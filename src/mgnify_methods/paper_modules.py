@@ -268,19 +268,19 @@ def permanova_paper(
 def prepare_deseq_inputs(
     count_table: pd.DataFrame,
     metadata: pd.DataFrame,
-    design_factors: str,
+    design_factors: list,
     min_total_count: int = 10,
 ):
     """Prepare count matrix and metadata for DESeq2 analysis.
 
     Transposes the count table, aligns samples between counts and metadata,
     filters low-abundance taxa, ensures integer counts, and converts the
-    design factor to categorical type.
+    design factors to categorical type.
 
     Args:
         count_table: Abundance table with taxa as rows and samples as columns.
         metadata: Sample metadata DataFrame indexed by sample ID.
-        design_factors: Name of the metadata column to use as design factor.
+        design_factors: List of metadata column names to use as design factors.
         min_total_count: Minimum total count threshold across all samples
             for retaining a taxon. Defaults to 10.
 
@@ -298,7 +298,7 @@ def prepare_deseq_inputs(
     # align samples
     common = counts.index.intersection(metadata.index)
     counts = counts.loc[common]
-    meta = metadata.loc[common]
+    meta = metadata.loc[common].copy()
 
     # filter low counts across dataset
     keep = counts.sum(axis=0) >= min_total_count
@@ -307,8 +307,10 @@ def prepare_deseq_inputs(
     # enforce integer counts
     counts = counts.round().astype(int)
 
-    # ensure categorical factor
-    meta[design_factors] = meta[design_factors].astype("category")
+    # ensure categorical factors
+    for factor in design_factors:
+        if factor in meta.columns:
+            meta[factor] = meta[factor].astype("category")
 
     return counts, meta
 
