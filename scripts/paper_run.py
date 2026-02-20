@@ -134,7 +134,7 @@ if CONFIG['diversity']['beta']['enabled']:
 if CONFIG['differential_abundance']['enabled']:
     logger.info("=== Differential Abundance Analysis ===")
 
-    deseq_results = pm.run_differential_pipeline_loop(
+    dss = pm.run_differential_pipeline(
         abundance_table,
         samples_meta,
         CONFIG,
@@ -142,6 +142,13 @@ if CONFIG['differential_abundance']['enabled']:
     )
     out_path = Path(CONFIG['output']['out_folder'])
     out_path.mkdir(parents=True, exist_ok=True)
-    with open(out_path / "deseq_result.pkl", "wb") as f:
-        pkl.dump(deseq_results, f)
+    with open(out_path / "dss.pkl", "wb") as f:
+        pkl.dump(dss, f)
+
+    # analyze results #
+    analysis_results = pm.analyse_deseq_results(
+        dss, samples_meta, CONFIG,
+    )
+    with open(out_path / "deseq_results.pkl", "wb") as f:
+        pkl.dump(analysis_results, f)
     

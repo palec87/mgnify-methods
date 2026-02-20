@@ -107,7 +107,12 @@
     "method": "deseq2",
     "params": {
       "deseq2": {
-        "design_factor": "study_tag",
+        "design_factors": [
+          "study_tag",
+          "season",
+          "latitude",
+          "temperature"
+        ],
         "min_counts": 1000,
         "padj": 0.05,
         "lfc": null,

@@ -14,10 +14,10 @@ def plot_prevalence_barplot(abundance_table: pd.DataFrame, top_n: int = 20) -> N
     top_taxa.name = "Prevalence (%)"
 
     # split index names
-    top_taxa.index = top_taxa.index.str.split(";c__").str[0]  # keep only the last part of the taxonomic string
+    top_taxa.index = top_taxa.index.str.split(";o__").str[0]  # keep only the last part of the taxonomic string
     
     # Create horizontal bar plot
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(15, 6))
     top_taxa.sort_values().plot(kind='barh', color='skyblue')
     
     # Add vertical line at 50%
@@ -32,6 +32,6 @@ def plot_prevalence_barplot(abundance_table: pd.DataFrame, top_n: int = 20) -> N
 
 if __name__ == "__main__":
     # Example usage
-    abundance_table = pd.read_csv("outputs/abundance_full.csv", index_col=0)
+    abundance_table = pd.read_csv("outputs/abundance_full_class.csv", index_col=0)
     
     plot_prevalence_barplot(abundance_table)

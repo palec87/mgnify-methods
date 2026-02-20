@@ -102,7 +102,7 @@ def extract_feature_dict(analysis_meta, samples_meta, feature: str = 'season'):
             not_matched += 1
             continue
 
-    print(f"Samples not matched to {feature} metadata: {not_matched}")
+    logger.info(f"Samples not matched to {feature} metadata: {not_matched}")
     return total_dict
 
 
@@ -305,6 +305,7 @@ def calculate_observed_otus(abundance_data):
     abundances = np.array(abundance_data)
     return np.sum(abundances > 0)
 
+
 def alpha_diversity_report(df_diversity, factors_df, feature='season'):
     """Calculate and report alpha diversity metrics.
     
@@ -338,7 +339,7 @@ def alpha_diversity_report(df_diversity, factors_df, feature='season'):
 
     # Convert to DataFrame
     diversity_df = pd.DataFrame(diversity_results)
-    print(f"Calculated diversity for {len(diversity_df)} samples")
+    logger.info(f"Calculated diversity for {len(diversity_df)} samples")
     diversity_metrics = ['shannon', 'simpson', 'observed_otus', 'chao1']
     return diversity_df, diversity_results, diversity_metrics
 

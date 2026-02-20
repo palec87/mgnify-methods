@@ -1,6 +1,9 @@
+from __future__ import annotations # Allows using types before they are defined/imported
+
 import json
+import logging
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import TYPE_CHECKING, Dict, Tuple
 import pandas as pd
 import pickle
 from mgnify_methods.metacomp.diversity import permanova_stat_dfs, run_permanova_factors
@@ -26,6 +29,7 @@ from mgnify_methods.utils.io import (
     add_meta,
     load_taxonomy_summary,
     filter_tax_summary,
+    evaluate_completeness,
 )
 from mgnify_methods.taxonomy import (
     fill_lower_taxa,
@@ -36,124 +40,87 @@ from mgnify_methods.utils.plot import (
     plot_feature_reads_hist,
 )
 from mgnify_methods.stats import extract_sample_stats_bulk
-from mgnify_methods import TaxonomyTable, AbundanceTable
-
+from mgnify_methods import AbundanceTable
 from mgnify_methods.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    import logging
+    from mgnify_methods import TaxonomyTable
+
+
 logger = get_logger(__name__, level="INFO")
 
 
 def run_differential_pipeline(
-    table,
-    samples_meta,
-    config,
-    logger,
-):
-    """
-    Main orchestrator across sample types/tax levels
+    table: pd.DataFrame,
+    samples_meta: pd.DataFrame,
+    config: Dict,
+    logger: logging.Logger,
+) -> Dict[str, Dict[str, Dict[str, pd.DataFrame]]]:
+    """Run differential abundance analysis with pairwise comparisons.
+
+    Main orchestrator for differential abundance analysis using DESeq2
+    with all pairwise comparisons between factor levels. Prepares inputs,
+    runs DESeq2 for each contrast, and filters results.
+
+    Args:
+        table: Taxonomic abundance table with samples as columns.
+        samples_meta: DataFrame containing sample metadata.
+        config: Configuration dictionary containing DESeq2 parameters,
+            sample type, and taxonomic level settings.
+        logger: Logger instance for tracking progress.
+
+    Returns:
+        Dictionary with structure:
+        {sample_type: {design_factor: {contrast_name: {'full': results_df,
+                                                       'significant': filtered_df}}},
+         'dds': DeseqDataSet}
     """
 
-    design = config["differential_abundance"]['params']['deseq2']["design_factor"]
+    design_factors = config["differential_abundance"]['params']['deseq2']["design_factors"]
     min_count = config["differential_abundance"]['params']['deseq2']["min_counts"]
-    padj = config["differential_abundance"]['params']['deseq2']["padj"]
-    lfc = config["differential_abundance"]['params']['deseq2']["lfc"]
-    sample_type = config['samples']['sample_type']
     tax_level = config['taxonomy']['analysis_level']
     cpus = config["differential_abundance"]['params']['deseq2'].get("n_cpus", 2)
-
-    result = {}
-
-    logger.info(f"Running DESeq2 for sample_type={sample_type}")
-    result[sample_type] = {}
 
     logger.info(f"  Tax level: {tax_level}")
 
     counts, meta = prepare_deseq_inputs(
         table,
         samples_meta,
-        design,
+        design_factors,
         min_count,
     )
 
-    res, dds = run_deseq2(
+    dds = run_deseq2(
         counts,
         meta,
-        design,
+        design_factors,
         ncpus=cpus,
         # ref_level=config["differential_abundance"].get("reference")
     )
-
-    sig = filter_deseq_results(res, padj, lfc)
-
-    result[sample_type][tax_level] = {
-        "full": res,
-        "significant": sig,
-        "dds": dds,
-    }
-
-    logger.info(
-        f"    Significant taxa: {len(sig)}"
-    )
-
-    return result
+    return dds
 
 
-def run_differential_pipeline_loop(
-    table,
-    samples_meta,
-    config,
-    logger,
-):
+def master_loading_pipeline(root_dir: Path, config: Dict) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Load, merge, and preprocess MGnify and EMO-BON data.
+
+    Master pipeline that loads data from multiple sources (MGnify and EMO-BON),
+    merges them, filters samples based on read counts, processes taxonomy,
+    and aggregates to the specified taxonomic level. Optionally saves
+    preprocessed data for later use.
+
+    Args:
+        root_dir: Root directory containing data and output folders.
+        config: Configuration dictionary specifying datasets, taxonomic
+            settings, filtering parameters, and preprocessing options.
+
+    Returns:
+        Tuple of (abundance_table, samples_metadata) where:
+            - abundance_table: DataFrame with taxa as rows, samples as columns,
+              aggregated to specified taxonomic level.
+            - samples_metadata: DataFrame with sample metadata including
+              collection dates, seasons, and sequencing information.
     """
-    Main orchestrator across sample types/tax levels
-    """
-
-    design = config["differential_abundance"]['params']['deseq2']["design_factor"]
-    min_count = config["differential_abundance"]['params']['deseq2']["min_counts"]
-    padj = config["differential_abundance"]['params']['deseq2']["padj"]
-    lfc = config["differential_abundance"]['params']['deseq2']["lfc"]
-    sample_type = config['samples']['sample_type']
-    tax_level = config['taxonomy']['analysis_level']
-    cpus = config["differential_abundance"]['params']['deseq2'].get("n_cpus", 2)
-
-    result = {}
-
-    logger.info(f"Running DESeq2 for sample_type={sample_type}")
-    result[sample_type] = {}
-
-    logger.info(f"  Tax level: {tax_level}")
-
-    counts, meta = prepare_deseq_inputs(
-        table,
-        samples_meta,
-        design,
-        min_count,
-    )
-
-    res, dds = run_deseq2_loop(
-        counts,
-        meta,
-        design,
-        ncpus=cpus,
-        # ref_level=config["differential_abundance"].get("reference")
-    )
-    for contrast, r in res.items():
-        sig = filter_deseq_results(r, padj, lfc)
-
-        result[sample_type][contrast] = {
-            "full": r,
-            "significant": sig,
-            # "dds": dds,
-        }
-
-        logger.info(
-            f"    Significant taxa: {len(sig)}"
-        )
-    result['dds'] = dds
-
-    return result
-
-
-def master_loading_pipeline(root_dir, config):
     analysis_meta, samples_meta = load_mgnify_meta(
         path=Path(config['input']['cache_dir']),
         datasets=config['datasets'],
@@ -249,6 +216,26 @@ def permanova_paper(
     samples_meta: pd.DataFrame,
     config: Dict,
 ):
+    """Run PERMANOVA analysis and save results.
+
+    Performs PERMANOVA (Permutational Multivariate Analysis of Variance)
+    on the abundance table for specified factors, generates summary
+    statistics, and saves results including p-values and F-statistics.
+
+    Args:
+        table: Taxonomic abundance table with samples as columns.
+        samples_meta: DataFrame containing sample metadata.
+        config: Configuration dictionary containing sample type,
+            PERMANOVA factors, and output settings.
+
+    Note:
+        Saves the following files to the output folder:
+        - permanova_dict.pkl: Complete results dictionary
+        - permanova_p.csv: P-values summary
+        - permanova_f.csv: F-statistics summary
+        - permanova_p_granular.csv: Detailed p-values
+        - permanova_f_granular.csv: Detailed F-statistics
+    """
     sample_type = config['samples']['sample_type']
     logger.info(f"=== Running PERMANOVA for sample type: {sample_type} ===")
 
@@ -281,12 +268,28 @@ def permanova_paper(
 def prepare_deseq_inputs(
     count_table: pd.DataFrame,
     metadata: pd.DataFrame,
-    design_factor: str,
+    design_factors: str,
     min_total_count: int = 10,
 ):
-    """
-    Aligns counts and metadata, filters low-abundance taxa,
-    ensures integer matrix for PyDESeq2.
+    """Prepare count matrix and metadata for DESeq2 analysis.
+
+    Transposes the count table, aligns samples between counts and metadata,
+    filters low-abundance taxa, ensures integer counts, and converts the
+    design factor to categorical type.
+
+    Args:
+        count_table: Abundance table with taxa as rows and samples as columns.
+        metadata: Sample metadata DataFrame indexed by sample ID.
+        design_factors: Name of the metadata column to use as design factor.
+        min_total_count: Minimum total count threshold across all samples
+            for retaining a taxon. Defaults to 10.
+
+    Returns:
+        Tuple of (counts, metadata) where:
+            - counts: DataFrame with samples as rows and taxa as columns,
+              containing integer counts.
+            - metadata: Aligned metadata DataFrame with design_factors as
+              categorical type.
     """
 
     # transpose -> samples x taxa
@@ -305,110 +308,126 @@ def prepare_deseq_inputs(
     counts = counts.round().astype(int)
 
     # ensure categorical factor
-    meta[design_factor] = meta[design_factor].astype("category")
+    meta[design_factors] = meta[design_factors].astype("category")
 
     return counts, meta
-
-
-def run_deseq2_loop(
-    counts: pd.DataFrame,
-    metadata: pd.DataFrame,
-    design_factor: str,
-    ncpus=None,
-):
-    """
-    Runs DESeq2 workflow using PyDESeq2 with pairwise comparisons.
-    """
-    inference = DefaultInference(n_cpus=ncpus if ncpus is not None else 2)
-    dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        design_factors=design_factor,
-        refit_cooks=True,
-        inference=inference,
-        quiet=False,
-    )
-    logger.info("Fitting DESeq2 model...")
-    logger.info(f"  Design: ~ {design_factor}")
-    logger.info(f"Dataset: {dds}")
-
-    dds.deseq2()
-
-    # Get unique levels of the design factor from metadata
-    factor_levels = sorted(metadata[design_factor].unique())
-    logger.info(f"Factor levels: {factor_levels}")
-    
-    if len(factor_levels) < 2:
-        raise ValueError(f"Design factor '{design_factor}' has less than 2 levels for contrast")
-    
-    # Perform all pairwise comparisons
-    result = {}
-    for i, group_to_compare in enumerate(factor_levels):
-        for baseline in factor_levels[:i]:
-            contrast_name = f"{group_to_compare}_vs_{baseline}"
-            logger.info(f"Computing contrast: {contrast_name}")
-            stats = DeseqStats(dds, contrast=(design_factor, group_to_compare, baseline))
-            stats.summary()
-            
-            res = stats.results_df.copy()
-            res.index.name = "taxon"
-            result[contrast_name] = res
-
-    return result, dds
 
 
 def run_deseq2(
     counts: pd.DataFrame,
     metadata: pd.DataFrame,
-    design_factor: str,
-    ncpus=None,
-):
-    """
-    Runs DESeq2 workflow using PyDESeq2.
+    design_factors: list,
+    ncpus: int = None,
+) -> Tuple[Dict[str, pd.DataFrame], DeseqDataSet]:
+    """Run DESeq2 analysis with all pairwise factor level comparisons.
+
+    Fits a DESeq2 model and performs all pairwise comparisons between
+    levels of the design factor. Each comparison tests differential
+    abundance between two groups.
+
+    Args:
+        counts: Count matrix with samples as rows and taxa as columns.
+        metadata: Sample metadata DataFrame with design factor.
+        design_factors: List of metadata columns for comparison groups.
+        ncpus: Number of CPUs to use for parallel computation. If None,
+            defaults to 2.
+
+    Returns:
+        Tuple of (results_dict, dds) where:
+            - results_dict: Dictionary mapping contrast names
+              (e.g., 'groupA_vs_groupB') to DESeq2 results DataFrames.
+            - dds: Fitted DeseqDataSet object.
+
+    Raises:
+        ValueError: If design_factor has fewer than 2 levels.
     """
     inference = DefaultInference(n_cpus=ncpus if ncpus is not None else 2)
     dds = DeseqDataSet(
         counts=counts,
         metadata=metadata,
-        design_factors=design_factor,
+        design_factors=design_factors,
         refit_cooks=True,
         inference=inference,
         quiet=False,
     )
     logger.info("Fitting DESeq2 model...")
-    logger.info(f"  Design: ~ {design_factor}")
+    logger.info(f"  Design: ~ {design_factors}")
     logger.info(f"Dataset: {dds}")
 
     dds.deseq2()
 
+    return dds
+
+
+def deseq2_pairwise_contrasts(
+    dds: DeseqDataSet,
+    metadata: pd.DataFrame,
+    design_factors: list,
+) -> Dict[str, pd.DataFrame]:
+    """Perform all pairwise contrasts for a DESeq2 dataset.
+
+    Args:
+        dds: Fitted DeseqDataSet object.
+        metadata: Sample metadata DataFrame with design factor.
+        design_factors: List of metadata columns for comparison groups.
+
+    Returns:
+        Dictionary mapping contrast names (e.g., 'groupA_vs_groupB') to
+        DESeq2 results DataFrames.
+
+    Raises:
+        ValueError: If design_factors has fewer than 2 levels.
+    """
     # Get unique levels of the design factor from metadata
-    factor_levels = sorted(metadata[design_factor].unique())
     logger.info(f"Factor levels: {factor_levels}")
+    logger.info(f"Design factors: {design_factors}")
     
-    # Use first two levels as contrast (baseline vs. group to compare)
-    if len(factor_levels) < 2:
-        raise ValueError(f"Design factor '{design_factor}' has less than 2 levels for contrast")
-    
-    baseline = factor_levels[0]
-    group_to_compare = factor_levels[1]
-    
-    logger.info(f"Computing contrast: {group_to_compare} vs {baseline}")
-    stats = DeseqStats(dds, contrast=(design_factor, group_to_compare, baseline))
-    stats.summary()
+    # Perform all pairwise comparisons
+    result = {}
+    for d in design_factors:
+        result[d] = {}
 
-    res = stats.results_df.copy()
-    res.index.name = "taxon"
+        # check factor levels for this design factor
+        factor_levels = sorted(metadata[d].unique())
+        if len(factor_levels) < 2:
+            logger.warning(f"Design factor '{d}' has less than 2 levels for contrast")
+            continue
 
-    return res, dds
+        for i, group_to_compare in enumerate(factor_levels):
+            for baseline in factor_levels[:i]:
+                contrast_name = f"{group_to_compare}_vs_{baseline}"
+                logger.info(f"Computing contrast: {contrast_name}")
+                stats = DeseqStats(dds, contrast=(d, group_to_compare, baseline))
+                stats.summary()
+                
+                res = stats.results_df.copy()
+                res.index.name = "taxon"
+                result[d][contrast_name] = res
+
+    return result
 
 
 def filter_deseq_results(
     results: pd.DataFrame,
-    padj_thresh=0.05,
-    lfc_thresh=None,
-):
-    """
-    Apply FDR and optional log2FC filtering
+    padj_thresh: float = 0.05,
+    lfc_thresh: float = None,
+) -> pd.DataFrame:
+    """Filter DESeq2 results by significance thresholds.
+
+    Applies false discovery rate (FDR) filtering and optional log2 fold
+    change filtering to identify significantly differentially abundant taxa.
+
+    Args:
+        results: DESeq2 results DataFrame with 'padj' and 'log2FoldChange'
+            columns.
+        padj_thresh: Maximum adjusted p-value threshold for significance.
+            Defaults to 0.05.
+        lfc_thresh: Minimum absolute log2 fold change threshold. If None,
+            no fold change filtering is applied. Defaults to None.
+
+    Returns:
+        Filtered DataFrame containing only significant results, sorted by
+        adjusted p-value in ascending order.
     """
 
     sig = results.dropna(subset=["padj"])
@@ -420,6 +439,61 @@ def filter_deseq_results(
     return sig.sort_values("padj")
 
 
+def analyse_deseq_results(
+    dds,
+    meta: pd.DataFrame,
+    config: Dict,
+) -> Dict:
+    """Perform analysis and visualization of DESeq2 results.
+
+    Analyzes the DESeq2 results by generating summary statistics, creating
+    visualizations such as volcano plots and heatmaps, and saving outputs
+    to the specified output folder.
+
+    Args:
+        deseq_results: Nested dictionary containing DESeq2 results for each
+            contrast.
+        config: Configuration dictionary containing output settings and
+            visualization parameters.
+
+    Returns:
+        Dictionary containing analysis outputs such as summary statistics,
+        generated plots, and filtered significant results.
+    """
+    design_factors = config["differential_abundance"]['params']['deseq2']["design_factors"]
+    padj = config["differential_abundance"]['params']['deseq2']["padj"]
+    lfc = config["differential_abundance"]['params']['deseq2']["lfc"]
+    sample_type = config['samples']['sample_type']
+
+    result = {}
+
+    logger.info(f"=== Running DESeq2 result analysis ===")
+    logger.info(f"Sample type: {sample_type}")
+    logger.info(f"Design factors: {design_factors}")
+    logger.info(f"Padj threshold: {padj}, LFC threshold: {lfc}")
+
+    result[sample_type] = {}
+
+    res = deseq2_pairwise_contrasts(dds, meta, design_factors)
+
+    for design_factor, contrasts in res.items():
+        logger.info(f"Design factor: {design_factor}, contrasts: {list(contrasts.keys())}")
+        
+        result[sample_type][design_factor] = {}
+        for contrast, r in contrasts.items():
+            sig = filter_deseq_results(r, padj, lfc)
+
+            result[sample_type][design_factor][contrast] = {
+                "full": r,
+                "significant": sig,
+            }
+
+            logger.info(
+                f"    Significant taxa: {len(sig)}"
+            )
+    return result
+
+
 #############################
 ### Preprocessing helpers ###
 #############################
@@ -428,6 +502,22 @@ def filter_sample_type(
     table: TaxonomyTable,
     config: Dict,
 ) -> TaxonomyTable:
+    """Filter taxonomy table to specified sample type.
+
+    Filters the taxonomy table to include only samples matching the
+    specified sample type (e.g., 'prok' or 'euk') from the configuration.
+
+    Args:
+        samples_meta: DataFrame containing sample metadata with
+            'sample_type' column.
+        table: TaxonomyTable object containing taxonomy data in df attribute.
+        config: Configuration dictionary with 'samples.sample_type' key
+            specifying the desired sample type.
+
+    Returns:
+        Updated TaxonomyTable object with df_filt attribute containing
+        only samples of the specified type.
+    """
     logger.info(f"Initial samples metadata: {samples_meta.shape[0]} samples")
     # Get sample list for selected sample type
     sample_type = config['samples']['sample_type']
@@ -442,6 +532,20 @@ def filter_sample_type(
 
 
 def clean_abundance_table(table: pd.DataFrame, config: Dict) -> TaxonomyTable:
+    """Convert and clean abundance table to taxonomy table format.
+
+    Converts raw abundance table to TaxonomyTable format, fills missing
+    taxonomic information, and applies taxonomy placeholder filling.
+
+    Args:
+        table: Raw abundance DataFrame indexed by taxonomic identifiers.
+        config: Configuration dictionary containing 'taxonomy.ranks' for
+            taxonomic level definitions.
+
+    Returns:
+        TaxonomyTable object with cleaned and filled taxonomic information,
+        indexed by 'source material ID'.
+    """
     # Convert abundance table to taxonomy table
     abundance_table = AbundanceTable(table.reset_index(), source='tax_mgnify_raw')
     ncbi_flag, taxonomy_table = abundance_table.to_taxonomy_table()
@@ -460,6 +564,20 @@ def clean_abundance_table(table: pd.DataFrame, config: Dict) -> TaxonomyTable:
 
 
 def process_emobon_data(table: pd.DataFrame, CONFIG: Dict) -> pd.DataFrame:
+    """Process EMO-BON data to match MGnify format.
+
+    Fills taxonomy placeholders, pivots data, cleans taxonomic rows,
+    and unifies column/index names to match MGnify conventions.
+
+    Args:
+        table: Raw EMO-BON abundance DataFrame.
+        CONFIG: Configuration dictionary containing 'taxonomy.ranks' for
+            taxonomic level definitions.
+
+    Returns:
+        Processed DataFrame with cleaned taxonomy indexed by '#SampleID',
+        compatible with MGnify data format.
+    """
     ssu_filt = fill_taxonomy_placeholders(table, CONFIG['taxonomy']['ranks'])
     ssu_filt = pivot_taxonomic_data(ssu_filt)
 
@@ -477,6 +595,22 @@ def process_emobon_data(table: pd.DataFrame, CONFIG: Dict) -> pd.DataFrame:
 
 
 def load_emobon(root_folder: Path, ret: str = 'ssu') -> pd.DataFrame:
+    """Load EMO-BON data and metadata.
+
+    Loads EMO-BON sample validation data, metadata, and abundance tables
+    from parquet files. Adds study tags and sample type annotations.
+
+    Args:
+        root_folder: Root directory containing EMO-BON data files.
+        ret: Which abundance type to return ('ssu' for SSU rRNA data).
+            Defaults to 'ssu'.
+
+    Returns:
+        Tuple of (abundance_df, metadata_df) where:
+            - abundance_df: Selected abundance table (e.g., SSU).
+            - metadata_df: EMO-BON metadata with 'study_tag', 'sample_type',
+              and standardized column names.
+    """
 
     def get_valid_samples():
         df_valid = pd.read_csv(
@@ -496,6 +630,26 @@ def load_emobon(root_folder: Path, ret: str = 'ssu') -> pd.DataFrame:
 
 
 def config_setup(root_dir: Path, config_path: Path) -> Dict:
+    """Set up analysis configuration and directory structure.
+
+    Loads configuration from JSON file, creates output and cache directories,
+    optionally adds timestamps to output folder names, saves configuration
+    to output folder, and configures file logging.
+
+    Args:
+        root_dir: Root directory for the project.
+        config_path: Path to the JSON configuration file.
+
+    Returns:
+        Configuration dictionary with added 'output.out_folder' and
+        'input.cache_dir' paths.
+
+    Note:
+        Creates the following directories if they don't exist:
+        - Output folder (timestamped or 'analysis_latest')
+        - Analysis cache folder
+        Also saves config and sets up logging to analysis.log in output folder.
+    """
     
     with open(config_path, "r") as f:  # load config from the json file
         config = json.load(f)
@@ -515,13 +669,13 @@ def config_setup(root_dir: Path, config_path: Path) -> Dict:
 
     for folder in [out_folder, analysis_cache]:
         folder.mkdir(parents=True, exist_ok=True)
-        print(f"Directory ready: {folder}")
+        logger.info(f"Directory ready: {folder}")
 
     # Save configuration to output folder
     config_path = out_folder / 'analysis_config.json'
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
-    print(f"Configuration saved to: {config_path}")
+    logger.info(f"Configuration saved to: {config_path}")
 
     # Configure logger to write to file in output folder
     from mgnify_methods.utils.logging import Logger
@@ -533,6 +687,23 @@ def config_setup(root_dir: Path, config_path: Path) -> Dict:
 
 
 def load_mgnify_meta(path: Path, datasets: Dict) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Load and process MGnify analysis and sample metadata.
+
+    Loads analysis and sample metadata from MGnify, filters to pipeline
+    version 5.0, enhances sample metadata with collection dates and seasons,
+    merges analysis metadata, and extracts sample statistics.
+
+    Args:
+        path: Directory path for cached metadata files.
+        datasets: Dictionary mapping study tags to [analysisId, ...] lists.
+
+    Returns:
+        Tuple of (analysis_meta, samples_meta) where:
+            - analysis_meta: DataFrame with MGnify analysis metadata filtered
+              to pipeline version 5.0.
+            - samples_meta: Enhanced DataFrame with sample metadata indexed
+              by 'source material ID', including sample statistics.
+    """
     analysis_meta = process_analysis_metadata(path, datasets)
     analysis_meta = analysis_meta.query("`attributes.pipeline-version` == 5.0")
     logger.info(f"Loaded {len(analysis_meta)} analyses")
@@ -548,14 +719,30 @@ def load_mgnify_meta(path: Path, datasets: Dict) -> Tuple[pd.DataFrame, pd.DataF
     samples_meta = extract_sample_stats_bulk(samples_meta)
     logger.info(f"Loaded {len(samples_meta)} samples")
 
-    # count nans in samples_meta
-    nan_counts = samples_meta.isna().sum()
-    logger.info(f"NaN counts in samples metadata:{nan_counts}")
-    logger.info(f"Samples metadata shape: {samples_meta.shape}")
+    evaluate_completeness(samples_meta)
+
     return analysis_meta, samples_meta
 
 
 def reads_filtering(samples_meta: pd.DataFrame, config: Dict) -> pd.DataFrame:
+    """Filter samples based on read count threshold.
+
+    Optionally plots read count histograms before and after filtering,
+    then removes samples with read counts below the configured threshold.
+
+    Args:
+        samples_meta: DataFrame containing sample metadata with
+            'total_seq_submitted' column.
+        config: Configuration dictionary containing filtering parameters,
+            plot settings, and feature specification.
+
+    Returns:
+        Filtered DataFrame with low-read-count samples removed.
+
+    Note:
+        If config['plots']['reads_histogram'] is True, saves histogram
+        plots showing read distribution before and after filtering.
+    """
     # Plot reads distribution before filtering
     if config['plots']['reads_histogram']:
         logger.info("=== Reads Distribution (Unfiltered) ===")
