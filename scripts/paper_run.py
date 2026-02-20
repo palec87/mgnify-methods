@@ -37,7 +37,7 @@ from mgnify_methods.utils.logging import get_logger
 
 logger = get_logger('paperRun', level="INFO")
 ROOT_DIR = Path(__file__).parent.parent.resolve()
-contig_path = ROOT_DIR / "configs" / "paper.json"
+contig_path = ROOT_DIR / "configs" / "small.json"
 
 
 CONFIG = pm.config_setup(ROOT_DIR, contig_path)

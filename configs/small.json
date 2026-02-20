@@ -103,7 +103,7 @@
     }
   },
   "differential_abundance": {
-    "enabled": false,
+    "enabled": true,
     "method": "deseq2",
     "params": {
       "deseq2": {
