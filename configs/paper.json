@@ -131,8 +131,7 @@
         "design_factors": [
           "study_tag",
           "season",
-          "latitude",
-          "temperature"
+          "latitude"
         ],
         "min_counts": 100,
         "padj": 0.05,
