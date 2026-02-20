@@ -275,7 +275,8 @@ def prepare_deseq_inputs(
 
     Transposes the count table, aligns samples between counts and metadata,
     filters low-abundance taxa, ensures integer counts, and converts the
-    design factors to categorical type.
+    design factors to categorical type. Removes samples with missing values
+    in any design factor.
 
     Args:
         count_table: Abundance table with taxa as rows and samples as columns.
@@ -300,17 +301,40 @@ def prepare_deseq_inputs(
     counts = counts.loc[common]
     meta = metadata.loc[common].copy()
 
+    # Check for missing design factors
+    missing_factors = [f for f in design_factors if f not in meta.columns]
+    if missing_factors:
+        raise ValueError(f"Design factors not found in metadata: {missing_factors}")
+
+    # Drop samples with NaN values in any design factor
+    before_drop = len(meta)
+    meta = meta.dropna(subset=design_factors)
+    after_drop = len(meta)
+    
+    if after_drop < before_drop:
+        logger.info(f"Dropped {before_drop - after_drop} samples with missing values in design factors")
+        logger.info(f"Remaining samples: {after_drop}")
+    
+    if after_drop == 0:
+        raise ValueError("No samples remain after dropping NaN values in design factors")
+
+    # Align counts with filtered metadata
+    counts = counts.loc[meta.index]
+
     # filter low counts across dataset
     keep = counts.sum(axis=0) >= min_total_count
     counts = counts.loc[:, keep]
+
+    logger.info(f"Kept {keep.sum()} taxa with >= {min_total_count} total counts")
 
     # enforce integer counts
     counts = counts.round().astype(int)
 
     # ensure categorical factors
     for factor in design_factors:
-        if factor in meta.columns:
-            meta[factor] = meta[factor].astype("category")
+        meta[factor] = meta[factor].astype("category")
+
+    logger.info(f"Final counts shape: {counts.shape}, metadata shape: {meta.shape}")
 
     return counts, meta
 
