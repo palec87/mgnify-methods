@@ -145,6 +145,9 @@ if CONFIG['differential_abundance']['enabled']:
     with open(out_path / "dss.pkl", "wb") as f:
         pkl.dump(dss, f)
 
+    with open(out_path / "samples_meta.pkl", "wb") as f:
+        pkl.dump(samples_meta, f)
+
     # analyze results #
     analysis_results = pm.analyse_deseq_results(
         dss, samples_meta, CONFIG,

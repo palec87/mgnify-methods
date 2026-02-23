@@ -24,6 +24,6 @@ subprocess.run([
 
 subprocess.run([
     "python",
-    "scripts/deseq2_analysis_plots.py",
+    "scripts/deseq2_plots.py",
     f"{FOLDER}/deseq_result.pkl"
 ], check=True)

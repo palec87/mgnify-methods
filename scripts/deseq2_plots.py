@@ -204,7 +204,7 @@ def _plot_summary_table(
             table[(0, i)].set_facecolor("#4472C4")
             table[(0, i)].set_text_props(weight="bold", color="white")
     
-    plt.title("DESeq2 Summary Statistics", fontsize=14, fontweight="bold", pad=20)
+    plt.title("DESeq2 Summary Statistics", fontsize=14, fontweight="bold")
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
