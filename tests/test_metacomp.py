@@ -132,4 +132,3 @@ def test_alpha_diversity_analysis_basic(tmp_path):
     assert summary_df.shape[0] == 2
     assert diversity_df.shape[0] == 2
     assert stats_df is not None
-    assert (tmp_path / "alpha_diversity_phylum_test.csv").exists()

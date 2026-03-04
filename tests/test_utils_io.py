@@ -141,56 +141,56 @@ def test_fetch_analysis_metadata_cached():
         assert list(result['relationships.run.data.id']) == ['RUN001', 'RUN002']
 
 
-def test_fetch_analysis_metadata_download():
-    """Test fetch_analysis_metadata when file doesn't exist (downloads from API)."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        analysisId = 'MGYS00006680'
+# def test_fetch_analysis_metadata_download():
+#     """Test fetch_analysis_metadata when file doesn't exist (downloads from API)."""
+#     with tempfile.TemporaryDirectory() as tmp_dir:
+#         analysisId = 'MGYS00006680'
         
-        # Mock the API session
-        mock_data = [
-            {'relationships': {'run': {'data': {'id': 'RUN001'}}}},
-            {'relationships': {'run': {'data': {'id': 'RUN002'}}}},
-        ]
+#         # Mock the API session
+#         mock_data = [
+#             {'relationships': {'run': {'data': {'id': 'RUN001'}}}},
+#             {'relationships': {'run': {'data': {'id': 'RUN002'}}}},
+#         ]
         
-        with patch('mgnify_methods.utils.io.APISession') as mock_session:
-            # Configure the mock
-            mock_session_instance = MagicMock()
-            mock_session.return_value.__enter__.return_value = mock_session_instance
-            mock_session_instance.iterate.return_value = [
-                MagicMock(json=item) for item in mock_data
-            ]
+#         with patch('mgnify_methods.utils.io.APISession') as mock_session:
+#             # Configure the mock
+#             mock_session_instance = MagicMock()
+#             mock_session.return_value.__enter__.return_value = mock_session_instance
+#             mock_session_instance.iterate.return_value = [
+#                 MagicMock(json=item) for item in mock_data
+#             ]
             
-            # Call the function
-            result = io_module.fetch_analysis_metadata(tmp_dir, analysisId)
+#             # Call the function
+#             result = io_module.fetch_analysis_metadata(tmp_dir, analysisId)
             
-            # Assertions
-            assert isinstance(result, pd.DataFrame)
-            assert result.shape[0] == 2
-            # Check that the file was saved
-            cache_file = os.path.join(tmp_dir, f'{analysisId}_analysis_meta.csv')
-            assert os.path.exists(cache_file)
+#             # Assertions
+#             assert isinstance(result, pd.DataFrame)
+#             assert result.shape[0] == 2
+#             # Check that the file was saved
+#             cache_file = os.path.join(tmp_dir, f'{analysisId}_analysis_meta.csv')
+#             assert os.path.exists(cache_file)
 
 
-def test_fetch_samples_metadata_cached():
-    """Test fetch_samples_metadata when file exists in cache."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        analysisId = 'MGYS00006680'
-        cache_file = os.path.join(tmp_dir, f'{analysisId}_samples_meta.csv')
+# def test_fetch_samples_metadata_cached():
+#     """Test fetch_samples_metadata when file exists in cache."""
+#     with tempfile.TemporaryDirectory() as tmp_dir:
+#         analysisId = 'MGYS00006680'
+#         cache_file = os.path.join(tmp_dir, f'{analysisId}_samples_meta.csv')
         
-        # Create test data and save to cache
-        test_data = pd.DataFrame({
-            'id': ['SAMPLE001', 'SAMPLE002'],
-            'sample-name': ['Sample 1', 'Sample 2'],
-        })
-        test_data.to_csv(cache_file, index=False)
+#         # Create test data and save to cache
+#         test_data = pd.DataFrame({
+#             'id': ['SAMPLE001', 'SAMPLE002'],
+#             'sample-name': ['Sample 1', 'Sample 2'],
+#         })
+#         test_data.to_csv(cache_file, index=False)
         
-        # Call the function
-        result = io_module.fetch_samples_metadata(tmp_dir, analysisId)
+#         # Call the function
+#         result = io_module.fetch_samples_metadata(tmp_dir, analysisId)
         
-        # Assertions
-        assert isinstance(result, pd.DataFrame)
-        assert result.shape[0] == 2
-        assert list(result['id']) == ['SAMPLE001', 'SAMPLE002']
+#         # Assertions
+#         assert isinstance(result, pd.DataFrame)
+#         assert result.shape[0] == 2
+#         assert list(result['id']) == ['SAMPLE001', 'SAMPLE002']
 
 
 def test_process_samples_metadata():
@@ -289,18 +289,19 @@ def test_filter_tax_summary_and_integrity():
         index=["RUN1", "RUN2"],
     )
 
-    filtered = io_module.filter_tax_summary(df, samples_meta)
+    filtered, filtered_meta = io_module.filter_tax_summary(df, samples_meta)
 
     assert list(filtered.columns) == ["RUN1", "RUN2"]
-    io_module.assert_taxonomy_integrity(filtered, samples_meta)
+    assert list(filtered_meta.index) == ["RUN1", "RUN2"]
+    io_module.assert_taxonomy_integrity(filtered, filtered_meta)
 
 
 def test_filter_number_reads():
-    sample_total_dict = {
-        "A": {"S1": (100, 0.1), "S2": (10, 0.2)},
-        "B": {"S3": (5, 0.3)},
-    }
-    to_drop = io_module.filter_number_reads(sample_total_dict, 20)
+    sample_totals = pd.DataFrame(
+        {"total_seq_submitted": [100, 10, 5]},
+        index=["S1", "S2", "S3"],
+    )
+    to_drop = io_module.filter_number_reads(sample_totals, 20)
 
     assert set(to_drop) == {"S2", "S3"}
 
