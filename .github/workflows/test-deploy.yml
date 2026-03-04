@@ -44,7 +44,7 @@ jobs:
       - name: Test with pytest
         uses: aganders3/headless-gui@v2
         with:
-          run: pytest -v --color=yes --cov=src --cov-report=xml
+          run: uv run pytest -v --color=yes --cov=src --cov-report=xml
         env:
           PLATFORM: ${{ matrix.platform }}
           MPLBACKEND: Agg
