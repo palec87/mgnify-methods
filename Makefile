@@ -7,10 +7,13 @@ help:  ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 install:  ## Install the package
-	uv sync
+	uv sync && \
+	uv pip install git+https://github.com/fair-ease/py-udal-mgo.git
 
 dev-install:  ## Install the package with development dependencies
-	uv sync --extra dev --extra docs
+	uv sync --extra dev --extra docs && \
+	uv pip install git+https://github.com/fair-ease/py-udal-mgo.git && \
+	uv run python -m ipykernel install --user --name mgnify-methods --display-name "mgnify-methods"
 
 test:  ## Run tests
 	uv run pytest tests/
