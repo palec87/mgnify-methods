@@ -15,7 +15,6 @@ dependencies = [
     "marine-omics>=0.1.17",
     "matplotlib>=3.8.0",
     "matplotlib_venn>=1.1.2",
-    "py-udal-mgo @ git+https://github.com/fair-ease/py-udal-mgo.git",
     "numpy>=1.25.0",
     "pandas>=2.0.0",
     "pydantic>=2.12.0",
