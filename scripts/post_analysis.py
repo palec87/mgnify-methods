@@ -1,3 +1,12 @@
+"""
+This script is for running post-analysis scripts on the outputs of the main paper run. 
+It is not meant to be run as part of the main paper run, because it produces plots from the `paper_run.py` outputs.
+The scripts invoked here are:
+- alpha_diversity_heatmaps.py
+- beta_diversity_heatmaps.py
+- deseq2_plots.py
+"""
+
 import subprocess
 
 FOLDER = "outputs/analysis_20260217_2009_class_full"
