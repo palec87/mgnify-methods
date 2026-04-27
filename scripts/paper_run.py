@@ -1,5 +1,5 @@
 """
-1. load config from the json file
+1. load config from the json file (change the config_path variable to point to the correct file)
 2. load/download the tsv file from MGnify using the API
 3. process metadata and taxonomic abundance data
 4. Alpha diversity analysis
@@ -55,6 +55,7 @@ else:
 ### Alpha diversity analysis ###
 ################################
 if CONFIG['diversity']['alpha']['enabled']:
+    # Note, running both is on purpose, alpha_tags are set for saving purposes
 
     # Case one - no processing, just raw data
     CONFIG['output']['alpha_tag'] = 'no_processing'
@@ -85,6 +86,7 @@ if CONFIG['diversity']['beta']['enabled']:
     ############
     ## Preprocessing for beta diversity
     ############
+    # this has always on the output abundance_table_beta
     if CONFIG['diversity']['beta']['remove_singletons']:
         abundance_table_beta = remove_singletons_per_sample(abundance_table, skip_columns=0)
         logger.info("Removed singletons per sample")
@@ -92,7 +94,7 @@ if CONFIG['diversity']['beta']['enabled']:
         abundance_table_beta = abundance_table.copy()
     
     abundance_table_beta = prevalence_cutoff_abund(
-        abundance_table, 
+        abundance_table_beta, 
         percent=CONFIG['diversity']['beta']['prevalence_cutoff'],
         skip_columns=0
     )
@@ -101,10 +103,10 @@ if CONFIG['diversity']['beta']['enabled']:
         method = CONFIG['preprocess']['method']
         logger.info(f"=== Using method {method} ===")
         
-        preprocess_tables = apply_preprocessing_method(abundance_table, method, CONFIG)
+        preprocess_tables = apply_preprocessing_method(abundance_table_beta, method, CONFIG)
     else:
         logger.info(f"No preprocessing")
-        preprocess_tables = {CONFIG['samples']['sample_type']: abundance_table}
+        preprocess_tables = {CONFIG['samples']['sample_type']: abundance_table_beta}
 
     ## Data transformation for beta diversity
     if CONFIG['transform']['enabled']:
